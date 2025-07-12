@@ -142,6 +142,9 @@ pip install aiohttp requests python-dotenv
 
 # Optional: API interface
 pip install flask
+
+# Or instead you can run 
+pip install -r requirements.txt
 ```
 
 ### **Environment Configuration**
