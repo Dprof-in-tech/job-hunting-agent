@@ -1,78 +1,492 @@
-<p align="center">
-  <a href="https://nextjs-flask-starter.vercel.app/">
-    <img src="https://assets.vercel.com/image/upload/v1588805858/repositories/vercel/logo.png" height="96">
-    <h3 align="center">Next.js Flask Starter</h3>
-  </a>
-</p>
+# 🚀 Multi-Agent Job Hunting System
 
-<p align="center">Simple Next.js boilerplate that uses <a href="https://flask.palletsprojects.com/">Flask</a> as the API backend.</p>
+An intelligent, collaborative AI system that employs multiple specialized agents to provide comprehensive job hunting assistance. Each agent is an expert in their domain, working together to deliver superior results.
 
-<br/>
+## 🏗 Architecture Overview
 
-## Introduction
+### **Multi-Agent Design Philosophy**
 
-This is a hybrid Next.js + Python app that uses Next.js as the frontend and Flask as the API backend. One great use case of this is to write Next.js apps that use Python AI libraries on the backend.
+Instead of a single agent with multiple tools, this system uses **specialized agents** that collaborate:
 
-## How It Works
-
-The Python/Flask server is mapped into to Next.js app under `/api/`.
-
-This is implemented using [`next.config.js` rewrites](https://github.com/vercel/examples/blob/main/python/nextjs-flask/next.config.js) to map any request to `/api/:path*` to the Flask API, which is hosted in the `/api` folder.
-
-On localhost, the rewrite will be made to the `127.0.0.1:5328` port, which is where the Flask server is running.
-
-In production, the Flask server is hosted as [Python serverless functions](https://vercel.com/docs/concepts/functions/serverless-functions/runtimes/python) on Vercel.
-
-## Demo
-
-https://nextjs-flask-starter.vercel.app/
-
-## Deploy Your Own
-
-You can clone & deploy it to Vercel with one click:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?demo-title=Next.js%20Flask%20Starter&demo-description=Simple%20Next.js%20boilerplate%20that%20uses%20Flask%20as%20the%20API%20backend.&demo-url=https%3A%2F%2Fnextjs-flask-starter.vercel.app%2F&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F795TzKM3irWu6KBCUPpPz%2F44e0c6622097b1eea9b48f732bf75d08%2FCleanShot_2023-05-23_at_12.02.15.png&project-name=Next.js%20Flask%20Starter&repository-name=nextjs-flask-starter&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fpython%2Fnextjs-flask&from=vercel-examples-repo)
-
-## Developing Locally
-
-You can clone & create this repo with the following command
-
-```bash
-npx create-next-app nextjs-flask --example "https://github.com/vercel/examples/tree/main/python/nextjs-flask"
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Coordinator   │────│ Resume Analyst  │────│ Job Researcher  │
+│   (Orchestrator)│    │   (Expert)      │    │    (Expert)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+         ┌─────────────────┐    ┌─────────────────┐
+         │   CV Creator    │────│  Job Matcher    │
+         │   (Expert)      │    │   (Expert)      │
+         └─────────────────┘    └─────────────────┘
 ```
 
-## Getting Started
+## 🤖 The Specialist Agents
 
-First, install the dependencies:
+### **1. 🎯 Coordinator Agent**
+**Role:** Strategic orchestrator and workflow manager
+- Analyzes user requests and determines optimal agent collaboration
+- Creates execution plans and routes tasks to appropriate specialists
+- Ensures efficient workflow and prevents redundant operations
+- Provides intelligent decision-making for complex scenarios
 
+**Capabilities:**
+- Request analysis and intent recognition
+- Agent selection and workflow optimization
+- Dynamic routing based on user needs
+- Progress tracking and coordination
+
+### **2. 📊 Resume Analyst Agent**
+**Role:** Resume optimization and analysis specialist
+- Expert in resume structure, content, and ATS compatibility
+- Identifies strengths, weaknesses, and improvement opportunities
+- Provides detailed scoring and actionable recommendations
+- Analyzes market alignment and career positioning
+
+**Capabilities:**
+- Comprehensive resume scoring (0-100)
+- ATS compatibility assessment
+- Strength and weakness identification
+- Keyword optimization suggestions
+- Career level and industry analysis
+- Specific improvement recommendations
+
+### **3. 🔍 Job Researcher Agent**
+**Role:** Job market intelligence and opportunity discovery
+- Specialist in job market trends and opportunity analysis
+- Researches demand patterns and hiring trends
+- Identifies in-demand skills and keywords
+- Provides market intelligence and competitive insights
+
+**Capabilities:**
+- Job opportunity discovery via multiple sources
+- Market demand analysis and trending skills
+- Company and location trend analysis
+- Keyword frequency analysis from job descriptions
+- Competitive landscape assessment
+- Remote work trend analysis
+
+### **4. 📝 CV Creator Agent**
+**Role:** Professional CV generation and optimization
+- Expert in professional document creation and formatting
+- Specializes in ATS-optimized content generation
+- Creates tailored CVs based on analysis and market data
+- Ensures professional presentation and formatting
+
+**Capabilities:**
+- Professional PDF CV generation
+- ATS optimization and keyword integration
+- Achievement-focused content creation
+- Market-aligned skill presentation
+- Professional formatting and layout
+- Multi-format export options
+
+### **5. 🎯 Job Matcher Agent**
+**Role:** Job fit analysis and application strategy
+- Specialist in resume-to-job compatibility analysis
+- Expert in skill gap identification and interview preparation
+- Provides strategic guidance for job applications
+- Calculates job fit scores and recommendations
+
+**Capabilities:**
+- Job compatibility scoring and analysis
+- Skill gap identification and recommendations
+- Application strategy development
+- Interview preparation guidance
+- Salary expectation analysis
+- Fit level assessment (excellent/good/fair/poor)
+
+## 🌟 Key Advantages of Multi-Agent Architecture
+
+### **🎯 Specialized Expertise**
+- Each agent is a domain expert with focused knowledge
+- Deeper specialization leads to higher quality outputs
+- Agents can be individually optimized and improved
+
+### **🔄 Intelligent Collaboration**
+- Agents share information and build upon each other's work
+- Coordinator ensures optimal workflow and prevents redundancy
+- Dynamic routing based on user needs and context
+
+### **⚡ Scalability & Maintainability**
+- Easy to add new specialist agents
+- Individual agents can be updated independently
+- Better error isolation and debugging
+- Modular architecture supports easy testing
+
+### **🧠 Adaptive Decision Making**
+- System adapts to different user needs automatically
+- No rigid workflows - intelligent routing based on context
+- Can handle complex, multi-faceted requests efficiently
+
+## 🛠 Installation & Setup
+
+### **Prerequisites**
+- Python 3.8+
+- OpenAI API key
+- ScraperAPI key (for job search)
+- Adzuna API credentials (optional)
+
+### **Install Dependencies**
 ```bash
-npm install
-# or
-yarn
-# or
-pnpm install
+# Core dependencies
+pip install langgraph langchain-openai langchain-core
+
+# Document processing
+pip install PyPDF2 python-docx fpdf2 reportlab
+
+# Web and async operations  
+pip install aiohttp requests python-dotenv
+
+# Optional: API interface
+pip install flask
 ```
 
-Then, run the development server:
+### **Environment Configuration**
+```env
+# Required
+OPENAI_API_KEY=your_openai_api_key_here
+SCRAPER_API_KEY=your_scraper_api_key_here
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+# Optional
+ADZUNA_APP_ID=your_adzuna_app_id_here
+ADZUNA_APP_KEY=your_adzuna_app_key_here
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Usage Examples
 
-The Flask server will be running on [http://127.0.0.1:5328](http://127.0.0.1:5328) – feel free to change the port in `package.json` (you'll also need to update it in `next.config.js`).
+### **Basic Multi-Agent Usage**
+```python
+from multi_agent_system import JobHuntingMultiAgent
 
-## Learn More
+# Initialize the system
+system = JobHuntingMultiAgent()
 
-To learn more about Next.js, take a look at the following resources:
+# Process different types of requests
+result = system.process_request(
+    user_message="I need complete job hunting help",
+    resume_path="my_resume.pdf"
+)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Flask Documentation](https://flask.palletsprojects.com/en/1.1.x/) - learn about Flask features and API.
+# Check which agents were involved
+print(system.get_agent_status(result))
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+### **Scenario-Based Examples**
+
+#### **1. Complete Job Hunt (All Agents)**
+```python
+request = "I need comprehensive help with my job search. Please analyze my resume, research the market, find opportunities, and create an optimized CV."
+resume = "resume.pdf"
+
+# Expected flow: Coordinator → Resume Analyst → Job Researcher → CV Creator
+result = system.process_request(request, resume)
+```
+
+#### **2. Resume Analysis Only (Single Agent)**
+```python
+request = "Can you analyze my resume and tell me what needs improvement?"
+resume = "resume.pdf"
+
+# Expected flow: Coordinator → Resume Analyst
+result = system.process_request(request, resume)
+```
+
+#### **3. Job Market Research (Focused Analysis)**
+```python
+request = "What's the current job market like for data scientists? I want to understand trends and demand."
+
+# Expected flow: Coordinator → Job Researcher  
+result = system.process_request(request)
+```
+
+#### **4. Job Application Strategy (Multiple Agents)**
+```python
+request = "I found some jobs I'm interested in. Help me understand which ones fit my background best."
+resume = "resume.pdf"
+
+# Expected flow: Coordinator → Resume Analyst → Job Researcher → Job Matcher
+result = system.process_request(request, resume)
+```
+
+## 🔄 Agent Collaboration Patterns
+
+### **Sequential Collaboration**
+```
+Resume Analyst → Job Researcher → CV Creator
+     ↓               ↓              ↓
+Analysis Results → Market Data → Optimized CV
+```
+
+### **Parallel Processing** 
+```
+                Coordinator
+                     ↓
+        ┌────────────┼────────────┐
+        ↓            ↓            ↓
+Resume Analyst  Job Researcher  Job Matcher
+        ↓            ↓            ↓
+    Results consolidation in CV Creator
+```
+
+### **Data Sharing Examples**
+- **Resume Analyst** identifies target roles → **Job Researcher** searches for those specific roles
+- **Job Researcher** finds in-demand keywords → **CV Creator** incorporates them into the CV
+- **Resume Analyst** identifies strengths/weaknesses → **Job Matcher** uses this for fit analysis
+
+## 📊 Performance & Monitoring
+
+### **Agent Performance Tracking**
+```python
+from multi_agent_system import MultiAgentMetrics
+
+metrics = MultiAgentMetrics()
+
+# Track execution times and success rates
+metrics.track_agent_execution("resume_analyst", 2.3, True)
+metrics.track_agent_execution("job_researcher", 5.1, True)
+
+# Generate performance report
+report = metrics.get_performance_report()
+```
+
+### **System Health Monitoring**
+- Individual agent success rates
+- Execution time tracking
+- Error isolation and recovery
+- Agent usage patterns
+
+## 🔧 Customization & Extension
+
+### **Adding New Specialist Agents**
+
+1. **Create the Agent Function**
+```python
+def new_specialist_agent(state: MultiAgentState):
+    """
+    Your new specialist agent implementation
+    """
+    # Agent logic here
+    return {
+        "messages": [AIMessage(content="Agent completed")],
+        "next_agent": "next_agent_name"
+    }
+```
+
+2. **Add to the Graph**
+```python
+# In create_multi_agent_system()
+graph.add_node("new_specialist", new_specialist_agent)
+
+# Add routing logic
+graph.add_conditional_edges("new_specialist", should_continue, {
+    "other_agent": "other_agent",
+    END: END
+})
+```
+
+3. **Update Coordinator**
+```python
+# Add to available agents in coordinator_agent()
+AVAILABLE_SPECIALIST_AGENTS = [
+    "resume_analyst", "job_researcher", "cv_creator", 
+    "job_matcher", "new_specialist"  # Add new agent
+]
+```
+
+### **Custom Agent Examples**
+
+```python
+def interview_prep_agent(state: MultiAgentState):
+    """Specialist for interview preparation and coaching"""
+    # Implementation here
+    pass
+
+def salary_negotiation_agent(state: MultiAgentState):  
+    """Specialist for salary research and negotiation strategies"""
+    # Implementation here
+    pass
+
+def linkedin_optimization_agent(state: MultiAgentState):
+    """Specialist for LinkedIn profile optimization"""  
+    # Implementation here
+    pass
+```
+
+## 🌐 API Interface (Optional)
+
+### **REST API Endpoints**
+```python
+# Start the API server
+from multi_agent_system import create_api_interface
+
+app = create_api_interface()
+app.run(debug=True, port=5000)
+```
+
+### **Available Endpoints**
+- `POST /analyze` - Resume analysis
+- `POST /job_search` - Job opportunity research  
+- `POST /create_cv` - CV generation
+- `POST /complete_workflow` - Full multi-agent workflow
+
+### **Example API Usage**
+```bash
+curl -X POST http://localhost:5000/complete_workflow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume_path": "resume.pdf",
+    "request": "I need complete job hunting help"
+  }'
+```
+
+## 🎯 Use Cases & Applications
+
+### **Job Seekers**
+- **Career Changers**: Analysis of transferable skills and market opportunities
+- **Recent Graduates**: Professional document creation and job search guidance
+- **Experienced Professionals**: Market positioning and optimization strategies
+- **Remote Workers**: Remote opportunity discovery and market analysis
+
+### **Career Services**
+- **Universities**: Student career preparation and job readiness assessment
+- **Career Coaches**: Client assessment tools and market intelligence
+- **Recruiting Firms**: Candidate evaluation and positioning assistance
+- **HR Departments**: Internal mobility and career development planning
+
+### **Enterprise Applications**
+- **Talent Acquisition**: Candidate assessment and job fit analysis
+- **Employee Development**: Career pathing and skill gap analysis
+- **Workforce Planning**: Market intelligence and talent pipeline development
+
+## 🛡 Error Handling & Resilience
+
+### **Agent-Level Error Handling**
+- Individual agent failures don't crash the entire system
+- Graceful degradation when agents encounter errors
+- Automatic retry mechanisms for transient failures
+- Detailed error reporting and logging
+
+### **System-Level Resilience**
+- Coordinator can reroute workflows around failed agents
+- Partial results delivery when some agents fail
+- State persistence for long-running workflows
+- Comprehensive error logging and monitoring
+
+## 🔒 Security & Privacy Considerations
+
+### **Data Handling**
+- Resume content processed temporarily in memory
+- No persistent storage of sensitive information
+- API key management and secure configuration
+- Optional data encryption for enterprise deployments
+
+### **Privacy Controls**
+- User consent for data processing
+- Data retention policies and cleanup
+- Audit trails for compliance requirements
+- GDPR and privacy regulation compliance options
+
+## 📈 Future Roadmap
+
+### **Planned Agent Additions**
+- [ ] **Interview Coach Agent** - Mock interviews and preparation
+- [ ] **Salary Negotiation Agent** - Compensation research and strategies  
+- [ ] **LinkedIn Optimizer Agent** - Profile optimization and networking
+- [ ] **Cover Letter Agent** - Customized cover letter generation
+- [ ] **Application Tracker Agent** - Job application management
+
+### **System Enhancements**
+- [ ] **Real-time collaboration** between agents
+- [ ] **Machine learning** for improved routing decisions
+- [ ] **Multi-language support** for global job markets
+- [ ] **Mobile app interface** for on-the-go access
+- [ ] **Integration APIs** for ATS systems and job boards
+
+### **Enterprise Features**
+- [ ] **Multi-tenant architecture** for organizations
+- [ ] **Custom agent development** framework
+- [ ] **Advanced analytics** and reporting dashboards
+- [ ] **Workflow automation** and scheduling
+- [ ] **Team collaboration** features
+
+## 🤝 Contributing
+
+### **Development Guidelines**
+1. Each agent should be focused and specialized
+2. Maintain clean interfaces between agents
+3. Include comprehensive error handling
+4. Write tests for individual agents
+5. Document agent capabilities and dependencies
+
+### **Agent Development Standards**
+- Clear input/output specifications
+- Consistent error handling patterns
+- Performance monitoring integration
+- Comprehensive logging and debugging
+- Documentation and usage examples
+
+## 📚 Technical Documentation
+
+### **State Management**
+```python
+class MultiAgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+    user_request: str
+    resume_path: str
+    resume_content: str
+    resume_analysis: Dict[str, Any]
+    job_market_data: Dict[str, Any]
+    job_listings: List[Dict[str, Any]]
+    cv_path: str
+    comparison_results: Dict[str, Any]
+    coordinator_plan: Dict[str, Any]
+    completed_tasks: List[str]
+    next_agent: str
+```
+
+### **Agent Communication Protocol**
+- Agents communicate through shared state
+- Structured data exchange formats
+- Message passing for user communication
+- Result aggregation and synthesis
+
+## 🆘 Troubleshooting
+
+### **Common Issues**
+
+**"Coordinator routing failed"**
+- Check OpenAI API key and connectivity
+- Verify user request format and content
+- Review agent availability and configuration
+
+**"Agent execution timeout"**
+- Check API rate limits and quotas
+- Verify network connectivity for external APIs
+- Review agent-specific configuration
+
+**"Resume parsing failed"**
+- Ensure supported file format (PDF, DOCX, TXT)
+- Check file permissions and accessibility
+- Verify file is not corrupted
+
+### **Debug Mode**
+```python
+# Enable detailed logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Run with debug information
+result = system.process_request(request, resume, debug=True)
+```
+
+## 📄 License
+
+[MIT]
+
+---
+
+**🚀 Transform your job search with intelligent multi-agent collaboration**
+
+*Where specialized AI expertise meets personalized career guidance*
