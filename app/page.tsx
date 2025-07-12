@@ -607,11 +607,11 @@ Examples:
       {/* Footer */}
       <footer className="border-t border-gray-200 mt-16">
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row items-center justify-between">
             <p className="text-sm text-gray-500">
               Powered by multi-agent AI system with autonomous coordination
             </p>
-            <div className="flex items-center gap-2 text-xs text-gray-400">
+            <div className="flex flex-wrap md:flex-row items-center gap-2 text-xs text-gray-400">
               <span>Specialists:</span>
               <span>Resume Analyst</span>
               <span>•</span>
