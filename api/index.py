@@ -322,69 +322,6 @@ def process_job_hunting_request():
             "job_id": job_id,
             "status_check_url": f"/api/status/{job_id}"
         }), 202
-
-        
-        # # Calculate execution time
-        # execution_time = (datetime.now() - start_time).total_seconds()
-        
-        # if result.get("success"):
-        #     logger.info(f"✅ Request processed successfully in {execution_time:.2f}s")
-            
-        #     # Extract key information for response
-        #     response_data = {
-        #         "agent_workflow": multi_agent.get_agent_status(result),
-        #         "completed_tasks": result.get("completed_tasks", []),
-        #         "execution_time": f"{execution_time:.2f}s",
-        #         "resume_analysis": result.get("resume_analysis", {}),
-        #         "job_market_data": result.get("job_market_data", {}),
-        #         "job_listings": result.get("job_listings", []),
-        #         "cv_path": result.get("cv_path", ""),
-        #         "comparison_results": result.get("comparison_results", {}),
-        #         "agent_messages": []
-        #     }
-            
-        #     # Extract readable messages from agents
-        #     for message in result.get("messages", []):
-        #         if hasattr(message, 'content'):
-        #             response_data["agent_messages"].append({
-        #                 "content": message.content,
-        #                 "timestamp": datetime.now().isoformat()
-        #             })
-            
-        #     # Add file download info if CV was created
-        #     if response_data["cv_path"]:
-        #         filename = os.path.basename(response_data["cv_path"])
-        #         response_data["cv_download_url"] = f"/api/download/{filename}"
-        #         response_data["cv_filename"] = filename
-            
-        #     summary_parts = []
-        #     if result.get("resume_analysis"):
-        #         score = result["resume_analysis"].get("overall_score", "N/A")
-        #         summary_parts.append(f"📊 Resume analyzed (Score: {score}/100)")
-            
-        #     if result.get("job_listings"):
-        #         count = len(result["job_listings"])
-        #         summary_parts.append(f"🔍 Found {count} job opportunities")
-            
-        #     if result.get("cv_path"):
-        #         summary_parts.append("📝 Professional CV generated")
-            
-        #     if result.get("comparison_results"):
-        #         best_match = result["comparison_results"].get("best_match", {})
-        #         match_score = best_match.get("match_percentage", 0)
-        #         summary_parts.append(f"🎯 Job compatibility analyzed (Best: {match_score}%)")
-            
-        #     summary = " • ".join(summary_parts) if summary_parts else "Request processed successfully"
-            
-        #     return create_success_response(response_data, summary)
-            
-        # else:
-        #     logger.error(f"❌ Request failed: {result.get('error', 'Unknown error')}")
-        #     return create_error_response(
-        #         "Request processing failed", 
-        #         500, 
-        #         result.get('error', 'Unknown error')
-        #     )
             
     except Exception as e:
         logger.error(f"❌ Endpoint error: {e}")
