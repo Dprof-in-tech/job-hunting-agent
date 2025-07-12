@@ -125,8 +125,9 @@ Instead of a single agent with multiple tools, this system uses **specialized ag
 ### **Prerequisites**
 - Python 3.8+
 - OpenAI API key
-- ScraperAPI key (for job search)
+- ScraperAPI key (for job search) (optional)
 - Adzuna API credentials (optional)
+- RapidAPI key (for job search)
 
 ### **Install Dependencies**
 ```bash
@@ -237,20 +238,6 @@ Resume Analyst  Job Researcher  Job Matcher
 
 ## 📊 Performance & Monitoring
 
-### **Agent Performance Tracking**
-```python
-from multi_agent_system import MultiAgentMetrics
-
-metrics = MultiAgentMetrics()
-
-# Track execution times and success rates
-metrics.track_agent_execution("resume_analyst", 2.3, True)
-metrics.track_agent_execution("job_researcher", 5.1, True)
-
-# Generate performance report
-report = metrics.get_performance_report()
-```
-
 ### **System Health Monitoring**
 - Individual agent success rates
 - Execution time tracking
@@ -314,33 +301,6 @@ def linkedin_optimization_agent(state: MultiAgentState):
     pass
 ```
 
-## 🌐 API Interface (Optional)
-
-### **REST API Endpoints**
-```python
-# Start the API server
-from multi_agent_system import create_api_interface
-
-app = create_api_interface()
-app.run(debug=True, port=5000)
-```
-
-### **Available Endpoints**
-- `POST /analyze` - Resume analysis
-- `POST /job_search` - Job opportunity research  
-- `POST /create_cv` - CV generation
-- `POST /complete_workflow` - Full multi-agent workflow
-
-### **Example API Usage**
-```bash
-curl -X POST http://localhost:5000/complete_workflow \
-  -H "Content-Type: application/json" \
-  -d '{
-    "resume_path": "resume.pdf",
-    "request": "I need complete job hunting help"
-  }'
-```
-
 ## 🎯 Use Cases & Applications
 
 ### **Job Seekers**
@@ -388,7 +348,7 @@ curl -X POST http://localhost:5000/complete_workflow \
 - Audit trails for compliance requirements
 - GDPR and privacy regulation compliance options
 
-## 📈 Future Roadmap
+## 📈 Future Roadmap Maybe
 
 ### **Planned Agent Additions**
 - [ ] **Interview Coach Agent** - Mock interviews and preparation
@@ -396,13 +356,6 @@ curl -X POST http://localhost:5000/complete_workflow \
 - [ ] **LinkedIn Optimizer Agent** - Profile optimization and networking
 - [ ] **Cover Letter Agent** - Customized cover letter generation
 - [ ] **Application Tracker Agent** - Job application management
-
-### **System Enhancements**
-- [ ] **Real-time collaboration** between agents
-- [ ] **Machine learning** for improved routing decisions
-- [ ] **Multi-language support** for global job markets
-- [ ] **Mobile app interface** for on-the-go access
-- [ ] **Integration APIs** for ATS systems and job boards
 
 ### **Enterprise Features**
 - [ ] **Multi-tenant architecture** for organizations
@@ -471,19 +424,10 @@ class MultiAgentState(TypedDict):
 - Check file permissions and accessibility
 - Verify file is not corrupted
 
-### **Debug Mode**
-```python
-# Enable detailed logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Run with debug information
-result = system.process_request(request, resume, debug=True)
-```
 
 ## 📄 License
 
-[MIT]
+MIT
 
 ---
 
