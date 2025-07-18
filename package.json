@@ -7,7 +7,9 @@
     "next-dev": "next dev",
     "dev": "concurrently \"pnpm run next-dev\" \"pnpm run flask-dev\"",
     "build": "next build",
-    "start": "next start",
+    "start:flask": "pip3 install -r requirements.txt && gunicorn --chdir api index:app -b 0.0.0.0:5328 --workers 2",
+  "start:next": "next start",
+  "start": "concurrently \"pnpm run start:next\" \"pnpm run start:flask\"",
     "lint": "next lint"
   },
   "dependencies": {
