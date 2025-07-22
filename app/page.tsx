@@ -21,9 +21,13 @@ interface ApiResponse {
       content: string;
       timestamp: string;
     }>;
+    hitl_checkpoint?: string;
+    hitl_data?: any;
+    job_id?: string;
   };
   error?: string;
   timestamp?: string;
+  needsApproval?: boolean;
 }
 
 interface QuickPrompt {
@@ -92,6 +96,134 @@ const quickPrompts: QuickPrompt[] = [
     category: 'research'
   }
 ];
+
+// Approval Components
+interface ApprovalComponentProps {
+  checkpoint: string;
+  data: any;
+  jobId: string;
+  onApproval: (jobId: string, response: any) => void;
+}
+
+const ApprovalComponent = ({ checkpoint, data, jobId, onApproval }: ApprovalComponentProps) => {
+  if (checkpoint === 'coordinator_plan') {
+    return <CoordinatorPlanApproval data={data} jobId={jobId} onApproval={onApproval} />;
+  } else if (checkpoint === 'job_role_clarification') {
+    return <JobRoleClarification data={data} jobId={jobId} onApproval={onApproval} />;
+  }
+  return null;
+};
+
+// Coordinator Plan Approval Component
+const CoordinatorPlanApproval = ({ data, jobId, onApproval }: { data: any; jobId: string; onApproval: (jobId: string, response: any) => void }) => {
+  return (
+    <div className="border border-gray-200 rounded-lg p-6 bg-white">
+      <div className="flex items-center gap-2 mb-4">
+        <Brain className="w-5 h-5 text-black" />
+        <h3 className="text-lg font-medium text-black">Review Execution Plan</h3>
+      </div>
+      
+      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+        <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+          {data?.plan_summary || 'Plan details unavailable'}
+        </pre>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => onApproval(jobId, { approved: true })}
+          className="flex-1 bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+        >
+          <CheckCircle className="w-4 h-4" />
+          Approve & Continue
+        </button>
+        <button
+          onClick={() => onApproval(jobId, { approved: false, feedback: 'User requested modifications' })}
+          className="flex-1 border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <AlertCircle className="w-4 h-4" />
+          Request Changes
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Job Role Clarification Component
+const JobRoleClarification = ({ data, jobId, onApproval }: { data: any; jobId: string; onApproval: (jobId: string, response: any) => void }) => {
+  const [clarifiedRole, setClarifiedRole] = useState('');
+
+  const handleSubmit = () => {
+    if (clarifiedRole.trim()) {
+      onApproval(jobId, { clarified_role: clarifiedRole.trim() });
+    }
+  };
+
+  const commonRoles = [
+    'Software Engineer',
+    'Data Scientist', 
+    'Product Manager',
+    'Marketing Manager',
+    'Sales Representative',
+    'UI/UX Designer',
+    'DevOps Engineer',
+    'Business Analyst'
+  ];
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-6 bg-white">
+      <div className="flex items-center gap-2 mb-4">
+        <Search className="w-5 h-5 text-black" />
+        <h3 className="text-lg font-medium text-black">Clarify Job Role</h3>
+      </div>
+      
+      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+        <p className="text-sm text-gray-700 leading-relaxed">
+          {data?.clarification_message || 'Please specify the job role you\'re interested in.'}
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Specific Job Role
+          </label>
+          <input
+            type="text"
+            value={clarifiedRole}
+            onChange={(e) => setClarifiedRole(e.target.value)}
+            placeholder="e.g., Software Engineer, Marketing Manager, Data Scientist"
+            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-black transition-colors"
+          />
+        </div>
+
+        <div>
+          <p className="text-sm text-gray-600 mb-2">Common roles:</p>
+          <div className="flex flex-wrap gap-2">
+            {commonRoles.map((role) => (
+              <button
+                key={role}
+                onClick={() => setClarifiedRole(role)}
+                className="text-xs px-3 py-1 border border-gray-200 rounded-full text-gray-600 hover:border-black hover:text-black transition-colors"
+              >
+                {role}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!clarifiedRole.trim()}
+          className="w-full bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <CheckCircle className="w-4 h-4" />
+          Continue with "{clarifiedRole || 'Selected Role'}"
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function JobHuntingPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -241,6 +373,38 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
     processRequest(quickPrompt.prompt, quickPrompt.needsFile);
   };
 
+  const handleApproval = async (jobId: string, approvalResponse: any) => {
+    try {
+      const res = await fetch(`/api/approve/${jobId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ response: approvalResponse }),
+      });
+
+      if (res.ok) {
+        // Resume polling to wait for completion
+        setIsLoading(true);
+        setResponse(null);
+        pollJobStatus(jobId);
+      } else {
+        const errorData = await res.json();
+        setResponse({
+          success: false,
+          message: '❌ Approval failed',
+          error: errorData.error || 'Failed to process approval',
+        });
+      }
+    } catch (err) {
+      setResponse({
+        success: false,
+        message: '❌ Approval failed',
+        error: 'Network error while processing approval',
+      });
+    }
+  };
+
   const formatAgentMessage = (content: string) => {
     // Basic formatting for agent messages
     return content
@@ -272,6 +436,19 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
             success: false,
             message: '❌ Job failed',
             error: data.error || 'Unknown error occurred.',
+          });
+        } else if (data.status === 'awaiting_approval') {
+          clearInterval(interval);
+          setIsLoading(false);
+          setResponse({
+            success: false,
+            message: '⏸️ Approval Required',
+            data: {
+              hitl_checkpoint: data.hitl_checkpoint,
+              hitl_data: data.hitl_data,
+              job_id: jobId
+            },
+            needsApproval: true
           });
         }
       } catch (err) {
@@ -449,22 +626,34 @@ Examples:
                 <div className={`border rounded-lg p-4 ${
                   response.success 
                     ? 'border-green-200 bg-green-50' 
+                    : response.needsApproval 
+                    ? 'border-blue-200 bg-blue-50'
                     : 'border-red-200 bg-red-50'
                 }`}>
                   <div className="flex items-center gap-2 mb-2">
                     {response.success ? (
                       <CheckCircle className="w-5 h-5 text-green-600" />
+                    ) : response.needsApproval ? (
+                      <Brain className="w-5 h-5 text-blue-600" />
                     ) : (
                       <AlertCircle className="w-5 h-5 text-red-600" />
                     )}
                     <span className={`font-medium ${
-                      response.success ? 'text-green-800' : 'text-red-800'
+                      response.success 
+                        ? 'text-green-800' 
+                        : response.needsApproval
+                        ? 'text-blue-800'
+                        : 'text-red-800'
                     }`}>
-                      {response.success ? 'Success' : 'Error'}
+                      {response.success ? 'Success' : response.needsApproval ? 'Approval Required' : 'Error'}
                     </span>
                   </div>
                   <p className={`text-sm ${
-                    response.success ? 'text-green-700' : 'text-red-700'
+                    response.success 
+                      ? 'text-green-700' 
+                      : response.needsApproval
+                      ? 'text-blue-700'
+                      : 'text-red-700'
                   }`}>
                     {response.message || response.error}
                   </p>
@@ -474,6 +663,16 @@ Examples:
                     </p>
                   )}
                 </div>
+
+                {/* Approval UI */}
+                {response.needsApproval && response.data?.hitl_checkpoint && response.data?.job_id && (
+                  <ApprovalComponent
+                    checkpoint={response.data.hitl_checkpoint}
+                    data={response.data.hitl_data}
+                    jobId={response.data.job_id}
+                    onApproval={handleApproval}
+                  />
+                )}
 
                 {/* Download CV */}
                 {response.success && response.data?.cv_download_url && (
