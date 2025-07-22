@@ -7,7 +7,7 @@ import logging
 from werkzeug.utils import secure_filename
 import mimetypes
 from api.main import JobHuntingMultiAgent
-from performance_evaluator import performance_evaluator
+from api.performance_evaluator import performance_evaluator
 import threading
 import uuid
 from langchain_core.messages import BaseMessage

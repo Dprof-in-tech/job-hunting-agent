@@ -14,7 +14,7 @@ import requests
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from typing import List
-from agents.base import JobListing
+from api.agents.base import JobListing
 
 # Environment variables
 ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
