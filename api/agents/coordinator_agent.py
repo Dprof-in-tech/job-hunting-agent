@@ -75,7 +75,7 @@ def coordinator_agent(state: MultiAgentState):
                 
                 # Check if HITL is enabled for this job
                 job_id = state.get('job_id')
-                if job_id and self._should_request_approval(state):
+                if job_id and _should_request_approval(state):
                     return {
                         "coordinator_plan": plan,
                         "next_agent": "HITL_APPROVAL",
@@ -138,8 +138,8 @@ def coordinator_agent(state: MultiAgentState):
             "messages": state.get('messages', [])
         }
     
-    def _should_request_approval(self, state: Dict[str, Any]) -> bool:
-        """Determine if human approval should be requested for this job"""
-        # For now, always request approval for coordinator plans
-        # In the future, this could be configurable per user or based on complexity
-        return True
+def _should_request_approval(self, state: dict[str, any]) -> bool:
+    """Determine if human approval should be requested for this job"""
+    # For now, always request approval for coordinator plans
+    # In the future, this could be configurable per user or based on complexity
+    return True
