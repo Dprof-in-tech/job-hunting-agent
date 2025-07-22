@@ -81,7 +81,7 @@ def job_researcher_agent(state: MultiAgentState):
             # Check if role is unclear and request human clarification
             if primary_role == 'unclear' or not primary_role or len(primary_role.strip()) < 3:
                 job_id = state.get('job_id')
-                if job_id and self._should_request_role_clarification(state):
+                if job_id and _should_request_role_clarification(state):
                     return {
                         "next_agent": "HITL_APPROVAL", 
                         "hitl_checkpoint": "job_role_clarification",
