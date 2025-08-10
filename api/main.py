@@ -10,12 +10,16 @@ from api.agents.cv_creator_agent import cv_creator_agent
 from api.agents.job_matcher_agent import job_matcher_agent
 from api.agents.job_researcher_agent import job_researcher_agent
 from api.agents.resume_analyst_agent import resume_analyst_agent
+import time
+import uuid
+from datetime import datetime
+import logging
+
 # performance_evaluator consolidated inline
 #########################################
 # Performance Evaluation System        #
 #########################################
 
-# removed unused import: statistics
 from dataclasses import dataclass, asdict
 
 @dataclass
@@ -311,11 +315,6 @@ class PerformanceEvaluator:
 
 # Global performance evaluator instance
 performance_evaluator = PerformanceEvaluator()
-
-import time
-import uuid
-from datetime import datetime
-import logging
 
 logger = logging.getLogger(__name__)
 
