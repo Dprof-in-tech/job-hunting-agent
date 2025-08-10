@@ -266,7 +266,7 @@ def cv_creator_agent(state: MultiAgentState):
         pdf_content = pdf.output(dest='S').encode('latin1')
         
         # Upload to Cloudinary storage
-        from api.storage import upload_cv_file
+        from api.tools import upload_cv_file
         cv_url = upload_cv_file(pdf_content, filename)
         
         # Set filename to the URL for compatibility

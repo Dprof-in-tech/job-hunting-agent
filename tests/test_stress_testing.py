@@ -19,7 +19,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from api.main import JobHuntingMultiAgent
-from tools.security import SecurityManager
+from api.security import SecurityManager
 from api.ai_safety import AISafetyCoordinator
 
 logging.basicConfig(level=logging.INFO)

@@ -314,3 +314,94 @@ async def search_google_jobs(location: str, job_role: str, max_jobs: int = 10) -
         raise Exception(f"Job search failed: {str(e)}")
 
     return jobs
+
+
+#########################################
+# Cloudinary Storage for Serverless    #
+#########################################
+
+import io
+import base64
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+from cloudinary.utils import cloudinary_url
+from typing import Optional
+
+class CloudinaryStorage:
+    """Cloudinary storage provider for serverless deployment"""
+    
+    def __init__(self):
+        # Configure Cloudinary from environment variables
+        self.configured = self._configure_cloudinary()
+    
+    def _configure_cloudinary(self) -> bool:
+        """Configure Cloudinary from environment variables"""
+        try:
+            cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
+            api_key = os.environ.get('CLOUDINARY_API_KEY')
+            api_secret = os.environ.get('CLOUDINARY_API_SECRET')
+            
+            if not all([cloud_name, api_key, api_secret]):
+                return False
+            
+            cloudinary.config(
+                cloud_name=cloud_name,
+                api_key=api_key,
+                api_secret=api_secret,
+                secure=True
+            )
+            
+            return True
+            
+        except Exception:
+            return False
+    
+    def upload_cv(self, cv_content: bytes, filename: str) -> Optional[str]:
+        """Upload CV file and return secure URL"""
+        if not self.configured:
+            return self._fallback_storage(cv_content, filename)
+        
+        try:
+            # Create file-like object from bytes
+            file_obj = io.BytesIO(cv_content)
+            
+            # Generate unique public_id
+            import time
+            timestamp = int(time.time())
+            public_id = f"cv_{timestamp}_{filename.replace('.', '_')}"
+            
+            # Upload to Cloudinary
+            result = cloudinary.uploader.upload(
+                file_obj,
+                public_id=public_id,
+                resource_type="auto",
+                folder="job-hunting-agent/cvs"
+            )
+            
+            return result['secure_url']
+            
+        except Exception:
+            return self._fallback_storage(cv_content, filename)
+    
+    def _fallback_storage(self, file_content: bytes, filename: str) -> Optional[str]:
+        """Fallback to base64 data URL if Cloudinary fails"""
+        try:
+            import base64
+            
+            # Determine MIME type
+            ext = os.path.splitext(filename)[1].lower()
+            mime_type = 'application/pdf' if ext == '.pdf' else 'application/octet-stream'
+            
+            encoded = base64.b64encode(file_content).decode('utf-8')
+            return f"data:{mime_type};base64,{encoded}"
+            
+        except Exception:
+            return None
+
+# Global storage instance
+_storage = CloudinaryStorage()
+
+def upload_cv_file(cv_content: bytes, filename: str) -> Optional[str]:
+    """Upload CV file and return URL"""
+    return _storage.upload_cv(cv_content, filename)

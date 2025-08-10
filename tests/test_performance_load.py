@@ -18,9 +18,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from api.main import JobHuntingMultiAgent
-from tools.security import SecurityManager
+from api.security import SecurityManager
 from api.ai_safety import AISafetyCoordinator
-from tools.performance_evaluator import PerformanceEvaluator
+from api.index import PerformanceEvaluator
 
 @dataclass
 class PerformanceResult:

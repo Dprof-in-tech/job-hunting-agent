@@ -10,7 +10,8 @@ from api.agents.cv_creator_agent import cv_creator_agent
 from api.agents.job_matcher_agent import job_matcher_agent
 from api.agents.job_researcher_agent import job_researcher_agent
 from api.agents.resume_analyst_agent import resume_analyst_agent
-from api.performance_evaluator import performance_evaluator, UserOutcome
+# performance_evaluator moved to index.py
+from api.index import performance_evaluator, UserOutcome
 import time
 import uuid
 from datetime import datetime
@@ -19,6 +20,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 config = RunnableConfig(recursion_limit=50)
+
+#########################################
+# Utility Functions                    #
+#########################################
+
+def serialize_message(message: Any) -> str:
+    """Convert any message type to a serializable string"""
+    if isinstance(message, HumanMessage):
+        return str(message.content)
+    elif isinstance(message, str):
+        return message
+    else:
+        return str(message)
+
+def serialize_messages(messages: List[Any]) -> List[str]:
+    """Convert a list of messages to serializable strings"""
+    return [serialize_message(msg) for msg in messages]
+
+def make_serializable(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Make a dictionary fully serializable by converting AIMessage objects"""
+    if not isinstance(data, dict):
+        return data
+    
+    serialized = {}
+    for key, value in data.items():
+        if key == 'messages' and isinstance(value, list):
+            # Convert messages to strings
+            serialized[key] = serialize_messages(value)
+        elif hasattr(value, 'content'):
+            # Convert single message
+            serialized[key] = serialize_message(value)
+        elif isinstance(value, dict):
+            # Recursively process nested dictionaries
+            serialized[key] = make_serializable(value)
+        elif isinstance(value, list):
+            # Process lists
+            serialized[key] = [make_serializable(item) if isinstance(item, dict) else serialize_message(item) if hasattr(item, 'content') else item for item in value]
+        else:
+            serialized[key] = value
+    
+    return serialized
 
 #########################################
 # Multi-Agent Orchestration System     #
