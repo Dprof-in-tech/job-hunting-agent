@@ -428,7 +428,7 @@ class MultiAgentState(TypedDict):
 - Verify file is not corrupted
 
 
-## 📄 License
+## 📄 Licensing
 
 MIT
 
