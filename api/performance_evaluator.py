@@ -124,6 +124,11 @@ class PerformanceEvaluator:
         
         self.system_metrics.last_updated = datetime.now()
     
+    def record_request_metrics(self, agent_name: str, request_type: str, processing_time: float, success: bool, error: str = None):
+        """Record request metrics for performance tracking"""
+        self.log_agent_call(agent_name, success, processing_time, error)
+        self.log_system_request(success, processing_time)
+    
     def log_user_satisfaction(self, score: float):
         """Log user satisfaction score (1-10 scale)"""
         if not (1 <= score <= 10):

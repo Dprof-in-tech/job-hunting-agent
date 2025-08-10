@@ -26,6 +26,11 @@ class MultiAgentState(TypedDict):
     coordinator_plan: Dict[str, Any]
     completed_tasks: List[str]
     next_agent: str
+    job_id: str
+    hitl_checkpoint: str
+    hitl_data: Dict[str, Any]
+    user_feedback: str
+    plan_rejected: bool
 
 @dataclass
 class JobListing:

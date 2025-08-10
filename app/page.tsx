@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, FileText, Search, Users, Briefcase, TrendingUp, Download, Loader2, CheckCircle, AlertCircle, Brain, Sparkles } from 'lucide-react';
+import { Upload, FileText, Search, Users, Briefcase, TrendingUp, Download, Loader2, CheckCircle, AlertCircle, Brain, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ApiResponse {
   success: boolean;
@@ -24,6 +24,7 @@ interface ApiResponse {
     hitl_checkpoint?: string;
     hitl_data?: any;
     job_id?: string;
+    revision?: boolean;
   };
   error?: string;
   timestamp?: string;
@@ -116,6 +117,36 @@ const ApprovalComponent = ({ checkpoint, data, jobId, onApproval }: ApprovalComp
 
 // Coordinator Plan Approval Component
 const CoordinatorPlanApproval = ({ data, jobId, onApproval }: { data: any; jobId: string; onApproval: (jobId: string, response: any) => void }) => {
+  const planSummary = data?.plan_summary || data?.plan?.reasoning || 'Plan details unavailable';
+  const planGoal = data?.plan?.primary_goal || 'Goal not specified';
+  const planAgents = data?.plan?.execution_order || [];
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  
+  const handleRequestChanges = () => {
+    if (feedbackText.trim()) {
+      // Provide immediate visual feedback
+      setShowFeedbackForm(false);
+      
+      onApproval(jobId, { 
+        approved: false, 
+        feedback: feedbackText.trim() 
+      });
+      setFeedbackText('');
+    }
+  };
+
+  const commonFeedbackOptions = [
+    "Focus more on remote work opportunities",
+    "I want higher salary ranges",
+    "Include more entry-level positions", 
+    "Focus on specific companies (Google, Microsoft, etc.)",
+    "Prioritize work-life balance",
+    "I prefer contract/freelance work",
+    "Focus on startups instead of large companies",
+    "Include more senior-level positions"
+  ];
+  
   return (
     <div className="border border-gray-200 rounded-lg p-6 bg-white">
       <div className="flex items-center gap-2 mb-4">
@@ -123,28 +154,93 @@ const CoordinatorPlanApproval = ({ data, jobId, onApproval }: { data: any; jobId
         <h3 className="text-lg font-medium text-black">Review Execution Plan</h3>
       </div>
       
-      <div className="bg-gray-50 rounded-lg p-4 mb-6">
-        <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-          {data?.plan_summary || 'Plan details unavailable'}
-        </pre>
+      <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-3">
+        <div>
+          <h4 className="font-medium text-black mb-1">Goal:</h4>
+          <p className="text-sm text-gray-700">{planGoal}</p>
+        </div>
+        
+        {planAgents.length > 0 && (
+          <div>
+            <h4 className="font-medium text-black mb-1">Agents Needed:</h4>
+            <p className="text-sm text-gray-700">{planAgents.join(' → ')}</p>
+          </div>
+        )}
+        
+        <div>
+          <h4 className="font-medium text-black mb-1">Strategy:</h4>
+          <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+            {planSummary}
+          </pre>
+        </div>
       </div>
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => onApproval(jobId, { approved: true })}
-          className="flex-1 bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-        >
-          <CheckCircle className="w-4 h-4" />
-          Approve & Continue
-        </button>
-        <button
-          onClick={() => onApproval(jobId, { approved: false, feedback: 'User requested modifications' })}
-          className="flex-1 border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-        >
-          <AlertCircle className="w-4 h-4" />
-          Request Changes
-        </button>
-      </div>
+      {!showFeedbackForm ? (
+        <div className="flex gap-3">
+          <button
+            onClick={() => onApproval(jobId, { approved: true })}
+            className="flex-1 bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Approve & Continue
+          </button>
+          <button
+            onClick={() => setShowFeedbackForm(true)}
+            className="flex-1 border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <AlertCircle className="w-4 h-4" />
+            Request Changes
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <h4 className="font-medium text-black mb-2">What should be done differently?</h4>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Describe what you'd like to change about this plan..."
+              className="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:border-black transition-colors text-sm"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <p className="text-sm text-gray-600 mb-2">Common requests:</p>
+            <div className="flex flex-wrap gap-2">
+              {commonFeedbackOptions.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={() => setFeedbackText(option)}
+                  className="text-xs px-3 py-1 border border-gray-200 rounded-full text-gray-600 hover:border-black hover:text-black transition-colors"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleRequestChanges}
+              disabled={!feedbackText.trim()}
+              className="flex-1 bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <AlertCircle className="w-4 h-4" />
+              Submit Changes
+            </button>
+            <button
+              onClick={() => {
+                setShowFeedbackForm(false);
+                setFeedbackText('');
+              }}
+              className="border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -225,6 +321,22 @@ const JobRoleClarification = ({ data, jobId, onApproval }: { data: any; jobId: s
   );
 };
 
+// Utility function to handle API responses and check for rate limits
+const handleAPIResponse = async (response: Response, apiName: string = 'API') => {
+  if (response.status === 429) {
+    const errorData = await response.json().catch(() => ({}));
+    const retryAfter = response.headers.get('retry-after') || errorData.retry_after || 60;
+    throw new Error(`🚫 Rate limit exceeded for ${apiName}. Please try again in ${retryAfter} seconds.`);
+  }
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(errorData.error || errorData.message || `${apiName} request failed`);
+  }
+  
+  return response.json();
+};
+
 export default function JobHuntingPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -234,6 +346,16 @@ export default function JobHuntingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [justProcessedApproval, setJustProcessedApproval] = useState<boolean>(false);
+  const [expandedSections, setExpandedSections] = useState<{[key: number]: boolean}>({});
+
+  // Toggle function for expandable sections
+  const toggleSection = useCallback((index: number) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  }, []);
 
   // Helper functions for job description processing
   const getCleanDescription = (description: string) => {
@@ -318,6 +440,44 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
     }
   };
 
+  const createNewSession = async () => {
+    const sessionRes = await fetch('/api/session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const sessionData = await handleAPIResponse(sessionRes, 'Session Creation');
+    const newSessionId = sessionData.session_id;
+    
+    // Store session ID for future requests
+    localStorage.setItem('session_id', newSessionId);
+    localStorage.setItem('session_created_at', Date.now().toString());
+    
+    return newSessionId;
+  };
+
+  const isSessionValid = async (sessionId: string) => {
+    try {
+      // Use a session-required endpoint for validation - job status endpoint requires @require_session
+      const testRes = await fetch('/api/status/validation-test-job', {
+        method: 'GET',
+        headers: {
+          'X-Session-ID': sessionId
+        }
+      });
+      
+      // If we get 401, session is invalid
+      // If we get 404, session is valid but job doesn't exist (which is what we expect)
+      // Any other status means session is valid
+      const isValid = testRes.status !== 401;
+      return isValid;
+    } catch (error) {
+      return false;
+    }
+  };
+
   const processRequest = async (prompt: string, needsFile: boolean = false) => {
     if (needsFile && !selectedFile) {
       alert('Please upload your resume first');
@@ -328,34 +488,60 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
     setResponse(null);
   
     try {
+      // Check for existing session first
+      let sessionId = localStorage.getItem('session_id');
+      
+      // If no existing session, create a new one
+      if (!sessionId) {
+        sessionId = await createNewSession();
+      } else {
+        // Validate existing session
+        const isValid = await isSessionValid(sessionId);
+        if (!isValid) {
+          localStorage.removeItem('session_id');
+          localStorage.removeItem('session_created_at');
+          sessionId = await createNewSession();
+        }
+      }
+      
+      // Now make the request with session
       const formData = new FormData();
       if (selectedFile) formData.append('file', selectedFile);
       formData.append('prompt', prompt);
   
       const res = await fetch('/api/process', {
         method: 'POST',
+        headers: {
+          'X-Session-ID': sessionId!
+        },
         body: formData,
       });
   
-      const result = await res.json();
+      const finalResult = await handleAPIResponse(res, 'Job Processing');
   
-      if (res.status === 202 && result.job_id) {
-        setJobId(result.job_id);
-        pollJobStatus(result.job_id);
+      if (finalResult.job_id) {
+        setJobId(finalResult.job_id);
+        // Clear any existing intervals before starting new polling
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        pollJobStatus(finalResult.job_id, true);
       } else {
         setIsLoading(false);
         setResponse({
           success: false,
-          message: result.message || 'Unexpected response from server',
-          error: result.error || 'Unknown error',
+          message: finalResult.message || 'Unexpected response from server',
+          error: finalResult.error || 'Unknown error',
         });
       }
     } catch (err) {
       setIsLoading(false);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while processing the request.';
       setResponse({
         success: false,
-        message: 'Request failed',
-        error: 'An error occurred while processing the request.',
+        message: errorMessage.includes('🚫') ? errorMessage : 'Request failed',
+        error: errorMessage,
       });
     }
   };
@@ -375,32 +561,83 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
 
   const handleApproval = async (jobId: string, approvalResponse: any) => {
     try {
+      const sessionId = localStorage.getItem('session_id');
+      if (!sessionId) {
+        setResponse({
+          success: false,
+          message: '❌ Session expired',
+          error: 'Please refresh and try again',
+        });
+        return;
+      }
+      
+      // Set flag to indicate we just processed approval
+      setJustProcessedApproval(true);
+      
       const res = await fetch(`/api/approve/${jobId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Session-ID': sessionId
         },
         body: JSON.stringify({ response: approvalResponse }),
       });
 
-      if (res.ok) {
-        // Resume polling to wait for completion
-        setIsLoading(true);
-        setResponse(null);
-        pollJobStatus(jobId);
-      } else {
-        const errorData = await res.json();
+      const result = await handleAPIResponse(res, 'Job Approval');
+      
+      // Check if the approval response indicates the job is already completed or needs new approval
+      if (result.success === true) {
+        // Approval was processed successfully
         setResponse({
           success: false,
-          message: '❌ Approval failed',
-          error: errorData.error || 'Failed to process approval',
+          message: approvalResponse.approved ? 
+            '⏳ Plan approved - Starting execution...' : 
+            '⏳ Changes submitted - Creating revised plan...',
+          data: undefined
         });
+      } else if (result.needsApproval) {
+        // Backend returned a new approval request (e.g., revised plan)
+        setResponse({
+          success: false,
+          message: result.message || '🔄 New plan ready for approval',
+          data: result.data,
+          needsApproval: true
+        });
+        setIsLoading(false);
+        return; // Don't start polling, we have a new approval request
+      } else {
+        // Handle other cases
+        setResponse({
+          success: result.success,
+          message: result.message || 'Approval processed',
+          data: result.data,
+          error: result.error
+        });
+        if (result.success) {
+          setIsLoading(false);
+          return; // Job might already be completed
+        }
       }
+      
+      // Resume polling with fast polling after a brief delay to allow backend processing
+      setIsLoading(true);
+      setTimeout(() => {
+        // Clear any existing intervals before starting new polling
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        pollJobStatus(jobId, true);
+        // Clear flag after a delay to allow for proper processing
+        // Increased timeout to match the increased polling tolerance
+        setTimeout(() => setJustProcessedApproval(false), 5000);
+      }, 1000); // Wait 1 second before starting polling
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Network error while processing approval';
       setResponse({
         success: false,
-        message: '❌ Approval failed',
-        error: 'Network error while processing approval',
+        message: errorMessage.includes('🚫') ? errorMessage : '❌ Approval failed',
+        error: errorMessage,
       });
     }
   };
@@ -413,16 +650,70 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
       .replace(/•/g, '&bull;');
   };
 
-  const pollJobStatus = async (jobId: string) => {
+  const pollJobStatus = async (jobId: string, fastPolling = false) => {
+    // Clear any existing polling interval first
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+    
+    // Use faster polling immediately after user actions, then slow down
+    const pollInterval = fastPolling ? 500 : 2500; // 0.5s vs 2.5s
+    let pollCount = 0;
+    
     const interval = setInterval(async () => {
+      pollCount++;
+      
+      // After 10 fast polls (5 seconds), switch to slower polling
+      if (fastPolling && pollCount > 10) {
+        clearInterval(interval);
+        setPollingInterval(null);
+        pollJobStatus(jobId, false); // Switch to slow polling
+        return;
+      }
+      
       try {
-        const res = await fetch(`/api/status/${jobId}`);
-        const data = await res.json();
+        const sessionId = localStorage.getItem('session_id');
+        if (!sessionId) {
+          clearInterval(interval);
+          setPollingInterval(null);
+          setIsLoading(false);
+          setResponse({
+            success: false,
+            message: '❌ Session expired',
+            error: 'Please refresh and try again',
+          });
+          return;
+        }
+        
+        const res = await fetch(`/api/status/${jobId}`, {
+          headers: {
+            'X-Session-ID': sessionId
+          }
+        });
+        
+        // Handle session expiration during polling
+        if (res.status === 401) {
+          clearInterval(interval);
+          setPollingInterval(null);
+          setIsLoading(false);
+          localStorage.removeItem('session_id');
+          localStorage.removeItem('session_created_at');
+          setResponse({
+            success: false,
+            message: '❌ Session expired during processing',
+            error: 'Please refresh and try your request again',
+          });
+          return;
+        }
+        
+        const data = await handleAPIResponse(res, 'Job Status');
   
         if (data.status === 'completed') {
           clearInterval(interval);
+          setPollingInterval(null);
           setIsLoading(false);
           setJobId(null);
+          setJustProcessedApproval(false); // Clear flag on completion
           setResponse({
             success: true,
             message: data.summary || '✅ Job completed',
@@ -430,6 +721,7 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
           });
         } else if (data.status === 'failed') {
           clearInterval(interval);
+          setPollingInterval(null);
           setIsLoading(false);
           setJobId(null);
           setResponse({
@@ -437,35 +729,79 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
             message: '❌ Job failed',
             error: data.error || 'Unknown error occurred.',
           });
+        } else if (data.status === 'processing' || data.status === 'in_progress' || data.status === 'executing') {
+          // Job is processing - show processing message and continue polling
+          setJustProcessedApproval(false); // Clear approval flag since we're now processing
+          setResponse({
+            success: false,
+            message: '⚙️ Executing approved plan...',
+            data: undefined // Clear any previous approval data
+          });
+          // Continue polling - don't clear interval
         } else if (data.status === 'awaiting_approval') {
+          // Check if we just processed an approval to avoid immediate double requests
+          if (justProcessedApproval && pollCount < 8) {
+            // Skip showing approval for first few polls after processing approval
+            // Increased from 5 to 8 to give backend more time to process
+            return;
+          }
+          
           clearInterval(interval);
+          setPollingInterval(null);
           setIsLoading(false);
           setResponse({
             success: false,
-            message: '⏸️ Approval Required',
+            message: data.revision ? '🔄 Revised Plan Ready - Review Changes' : '⏸️ Approval Required',
             data: {
               hitl_checkpoint: data.hitl_checkpoint,
               hitl_data: data.hitl_data,
-              job_id: jobId
+              job_id: data.job_id || jobId,
+              revision: data.revision || false
             },
             needsApproval: true
           });
+        } else {
+          // Handle any other status (fallback) - continue polling
+          setResponse({
+            success: false,
+            message: `⚙️ Processing... (${data.status})`,
+            data: undefined
+          });
+          // Continue polling - don't clear interval
         }
       } catch (err) {
         clearInterval(interval);
+        setPollingInterval(null);
         setIsLoading(false);
         setJobId(null);
+        const errorMessage = err instanceof Error ? err.message : 'Could not retrieve job status';
         setResponse({
           success: false,
-          message: '❌ Polling failed',
-          error: 'Could not retrieve job status',
+          message: errorMessage.includes('🚫') ? errorMessage : '❌ Polling failed',
+          error: errorMessage,
         });
       }
-    }, 2500);
+    }, pollInterval);
   
     setPollingInterval(interval);
   };
   
+  // Validate session on page load
+  useEffect(() => {
+    const validateSessionOnLoad = async () => {
+      const sessionId = localStorage.getItem('session_id');
+      if (sessionId) {
+        const isValid = await isSessionValid(sessionId);
+        if (!isValid) {
+          localStorage.removeItem('session_id');
+          localStorage.removeItem('session_created_at');
+        }
+      }
+    };
+    
+    validateSessionOnLoad();
+  }, []);
+
   useEffect(() => {
     return () => {
       if (pollingInterval) {
@@ -699,26 +1035,96 @@ Examples:
                 {/* Agent Messages */}
                 {response.success && response.data?.agent_messages && (
                   <div className="space-y-4">
-                    {response.data.agent_messages.map((message, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-6 bg-white">
-                        <div 
-                          className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
-                          dangerouslySetInnerHTML={{
-                            __html: formatAgentMessage(message.content)
-                          }}
-                        />
-                      </div>
-                    ))}
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-black">AI Analysis & Results</h3>
+                      <span className="text-xs text-gray-500">
+                        {response.data.agent_messages.length} section{response.data.agent_messages.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="space-y-3 max-h-[750px] overflow-y-auto pr-2 scrollbar-thin">
+                      {response.data.agent_messages.map((message, index) => {
+                        const isExpanded = expandedSections[index] ?? (index === 0); // First section expanded by default
+                        const previewText = message.content.substring(0, 200) + (message.content.length > 200 ? '...' : '');
+                        
+                        return (
+                          <div key={index} className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                            {/* Message Header - Clickable */}
+                            <button
+                              onClick={() => toggleSection(index)}
+                              className="w-full flex items-center justify-between p-4 pb-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-gray-600" />
+                                <span className="text-sm font-medium text-gray-700">
+                                  Analysis Section {index + 1}
+                                </span>
+                                {!isExpanded && (
+                                  <span className="text-xs text-gray-500 ml-2">
+                                    ({message.content.length} characters)
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {message.timestamp && (
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(message.timestamp).toLocaleTimeString()}
+                                  </span>
+                                )}
+                                {isExpanded ? (
+                                  <ChevronUp className="w-4 h-4 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                                )}
+                              </div>
+                            </button>
+                            
+                            {/* Message Content - Collapsible */}
+                            <div className={`transition-all duration-200 ${isExpanded ? 'max-h-none' : 'max-h-0 overflow-hidden'}`}>
+                              {isExpanded ? (
+                                <div className="p-4 pt-3">
+                                  <div 
+                                    className="prose prose-sm max-w-none text-gray-700 leading-relaxed [&>h1]:text-lg [&>h1]:font-semibold [&>h1]:text-black [&>h1]:mb-3 [&>h2]:text-base [&>h2]:font-medium [&>h2]:text-black [&>h2]:mb-2 [&>h3]:text-sm [&>h3]:font-medium [&>h3]:text-gray-900 [&>h3]:mb-2 [&>ul]:space-y-1 [&>ol]:space-y-1 [&>li]:text-sm [&>p]:text-sm [&>p]:mb-3 [&>strong]:font-medium [&>strong]:text-black"
+                                    dangerouslySetInnerHTML={{
+                                      __html: formatAgentMessage(message.content)
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="p-4 pt-3 bg-gray-50">
+                                  <p className="text-sm text-gray-600 line-clamp-3">
+                                    {previewText}
+                                  </p>
+                                  <button
+                                    onClick={() => toggleSection(index)}
+                                    className="text-xs text-blue-600 hover:text-blue-800 mt-2 font-medium"
+                                  >
+                                    Click to expand →
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
-                {/* Additional Data */}
+                {/* Job Listings */}
                 {response.success && response.data?.job_listings && response.data.job_listings.length > 0 && (
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-black mb-3">
-                      Job Opportunities ({response.data.job_listings.length})
-                    </h3>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium text-black">
+                          Job Opportunities
+                        </h3>
+                        <span className="text-sm text-gray-600">
+                          {response.data.job_listings.length} found
+                        </span>
+                      </div>
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto scrollbar-thin p-4">
+                      <div className="space-y-4">
                       {response.data.job_listings.slice(0, 10).map((job: any, index: number) => {
                         const cleanDescription = getCleanDescription(job.description);
                         const skills = getSkills(job.description);
@@ -784,6 +1190,7 @@ Examples:
                           </div>
                         );
                       })}
+                      </div>
                     </div>
                   </div>
                 )}

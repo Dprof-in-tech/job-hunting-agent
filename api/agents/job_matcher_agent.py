@@ -46,16 +46,14 @@ def job_matcher_agent(state: MultiAgentState):
         
         return {
             "coordinator_plan": plan,
-            "next_agent": "coordinator",
-            "completed_tasks": state.get('completed_tasks', []),
+                "completed_tasks": state.get('completed_tasks', []),
             "messages": [AIMessage(content=f"🎯 **Job Matcher**: Requesting {' and '.join(missing_deps)} first to enable comprehensive job compatibility analysis...")] + state.get('messages', [])
         }
     
     if not resume_content or not job_listings:
         return {
             "messages": [AIMessage(content="❌ **Job Matcher**: Missing required data for job matching analysis.")] + state.get('messages', []),
-            "next_agent": "coordinator",
-            "completed_tasks": state.get('completed_tasks', []) + ['job_matcher']
+                "completed_tasks": state.get('completed_tasks', []) + ['job_matcher']
         }
     
     
@@ -120,8 +118,7 @@ def job_matcher_agent(state: MultiAgentState):
     if not match_results:
         return {
             "messages": [AIMessage(content="❌ **Job Matcher**: Failed to analyze job compatibility")] + state.get('messages', []),
-            "next_agent": "coordinator",
-            "completed_tasks": state.get('completed_tasks', []) + ['job_matcher']
+                "completed_tasks": state.get('completed_tasks', []) + ['job_matcher']
         }
     
     # Enhanced comprehensive analysis
@@ -181,6 +178,5 @@ def job_matcher_agent(state: MultiAgentState):
             }
         },
         "completed_tasks": state.get('completed_tasks', []) + ['job_matcher'],
-        "next_agent": "coordinator",
         "messages": [AIMessage(content=summary)] + state.get('messages', [])
     }

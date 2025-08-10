@@ -25,7 +25,7 @@ RAPID_API_KEY = os.getenv("RAPID_API_KEY")
 RAPID_API_URL="https://daily-international-job-postings.p.rapidapi.com/api/v2/jobs/search"
 
 # Shared LLM instance
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatOpenAI(model="gpt-5-nano", temperature=1)
 
 #########################################
 # Tools                   #
@@ -303,8 +303,14 @@ async def search_google_jobs(location: str, job_role: str, max_jobs: int = 10) -
                 #     date_found=datetime.now()
                 # ))
             except Exception as e:
+                # Skip malformed job entries silently
                 continue
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 429:
+            raise Exception("Rate limit exceeded - Job search API quota reached. Please try again later.")
+        else:
+            raise Exception(f"Job search API error ({e.response.status_code}): {str(e)}")
     except Exception as e:
-        pass
+        raise Exception(f"Job search failed: {str(e)}")
 
     return jobs

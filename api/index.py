@@ -1,4 +1,7 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response, redirect, g
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 import traceback
 import tempfile
@@ -8,30 +11,101 @@ from werkzeug.utils import secure_filename
 import mimetypes
 from api.main import JobHuntingMultiAgent
 from api.performance_evaluator import performance_evaluator
+from api.system_monitor import system_monitor
+from api.security import (
+    security_manager, 
+    require_session, 
+    create_anonymous_session_endpoint,
+    create_secure_error_response,
+    SecurityException
+)
+from api.ai_safety import AISafetyCoordinator
 import threading
 import uuid
 from langchain_core.messages import BaseMessage
 
-job_results = {} 
+# Secure job results storage with session isolation
+secure_job_results = {} 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configure logging securely (no sensitive data) - Vercel compatible
+def setup_logging():
+    """Setup logging compatible with serverless deployment"""
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    log_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+    
+    # Use only console logging for serverless environments
+    if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV'):
+        # Vercel captures console output automatically
+        logging.basicConfig(
+            level=getattr(logging, log_level),
+            format=log_format,
+            handlers=[logging.StreamHandler()]
+        )
+    else:
+        # Local development can still use file logging
+        logging.basicConfig(
+            level=getattr(logging, log_level),
+            format=log_format,
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler('app_security.log', mode='a')
+            ]
+        )
+
+setup_logging()
 logger = logging.getLogger(__name__)
-app = Flask(__name__)
 
-# Configuration
+# Initialize Flask app with security settings
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
+# Serverless-compatible upload configuration
+if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV'):
+    # Use memory for temporary file handling in serverless
+    app.config['UPLOAD_FOLDER'] = '/tmp'  # Vercel provides /tmp directory
+else:
+    # Local development
+    app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'doc'}
+
+# CORS configuration
+CORS(app, 
+     origins=os.environ.get('ALLOWED_ORIGINS', '*').split(','),
+     methods=['GET', 'POST'],
+     allow_headers=['Content-Type', 'Authorization'],
+     supports_credentials=False  # No cookies for anonymous sessions
+)
+
+# Rate limiter with secure configuration
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
 
 try:
     multi_agent = JobHuntingMultiAgent()
-    logger.info("✅ Multi-agent system initialized successfully")
 except Exception as e:
     logger.error(f"❌ Failed to initialize multi-agent system: {e}")
     multi_agent = None
+
+# Initialize AI Safety Coordinator
+try:
+    safety_coordinator = AISafetyCoordinator()
+except Exception as e:
+    logger.warning(f"⚠️ AI Safety Coordinator initialization failed: {e}")
+    safety_coordinator = None
+
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'"
+    return response
 
 #########################################
 # Utility Functions                    #
@@ -65,28 +139,114 @@ def create_success_response(data, message="Operation successful"):
     
     return jsonify(response), 200
 
-def save_uploaded_file(file):
-    """Save uploaded file securely and return filepath"""
+def save_uploaded_file_secure(file, session_id):
+    """Save uploaded file securely with session isolation"""
     if not file or file.filename == '':
         return None, "No file selected"
     
-    if not allowed_file(file.filename):
-        return None, f"File type not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+    # Validate file using security manager
+    is_valid, error_msg = security_manager.validate_file_upload(file)
+    if not is_valid:
+        return None, error_msg
     
-
-    filename = secure_filename(file.filename)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"{timestamp}_{filename}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    # Generate secure filename with session isolation
+    secure_filename_generated = security_manager.generate_secure_filename(
+        file.filename, session_id
+    )
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename_generated)
     
     try:
         file.save(filepath)
-        logger.info(f"File uploaded successfully: {filename}")
         return filepath, None
     except Exception as e:
-        logger.error(f"File upload error: {e}")
-        return None, f"File upload failed: {str(e)}"
+        logger.error(f"Secure file upload failed for session {session_id[:8]}***: {e}")
+        return None, "File upload failed"
+
+def background_process_secure(job_id, user_prompt, resume_path, session_data):
+    """Secure background processing with AI safety checks"""
+    session_id = session_data['session_id']
+    start_time = datetime.now()
     
+    try:
+        # Sanitize input
+        sanitized_prompt = security_manager.sanitize_user_input(user_prompt)
+        
+        # Process with AI safety checks
+        if safety_coordinator:
+            # Pre-process safety check
+            safety_check = safety_coordinator.comprehensive_safety_check(
+                {"prompt": sanitized_prompt, "has_file": resume_path is not None},
+                output_type="job_request"
+            )
+            
+            if safety_check.bias_check.bias_detected:
+                logger.warning(f"Bias detected in request from session {session_id[:8]}***")
+        
+        # Process request with multi-agent system
+        result = multi_agent.process_request_with_hitl(
+            user_message=sanitized_prompt, 
+            resume_path=resume_path, 
+            user_id=session_id,
+            job_id=job_id
+        )
+        
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        # Serialize and encrypt sensitive data
+        if result.get("success"):
+            # Encrypt sensitive information
+            if result.get("resume_analysis"):
+                result["resume_analysis"] = security_manager.encrypt_sensitive_data(
+                    str(result["resume_analysis"])
+                )
+            
+            safe_result = serialize_result({**result, "execution_time": execution_time})
+            
+            # Update download URLs for secure access
+            if safe_result.get("cv_filename"):
+                safe_result["cv_download_url"] = f"/api/download/{session_id}/{safe_result['cv_filename']}"
+            
+            if session_id not in secure_job_results:
+                secure_job_results[session_id] = {}
+                
+            secure_job_results[session_id][job_id] = {
+                "status": "completed",
+                "result": safe_result,
+                "summary": "✅ Job completed successfully with security checks",
+            }
+        elif result.get("hitl_checkpoint"):
+            # Handle HITL with security
+            if session_id not in secure_job_results:
+                secure_job_results[session_id] = {}
+                
+            secure_job_results[session_id][job_id].update({
+                "status": "awaiting_approval",
+                "hitl_checkpoint": result.get("hitl_checkpoint"),
+                "hitl_data": result.get("hitl_data", {}),
+                "thread_id": result.get("thread_id"),  # Store thread_id for resume
+                "partial_result": serialize_result(result)
+            })
+        else:
+            if session_id not in secure_job_results:
+                secure_job_results[session_id] = {}
+                
+            secure_job_results[session_id][job_id] = {
+                "status": "failed",
+                "error": result.get("error", "Unknown error"),
+                "execution_time": execution_time
+            }
+            
+    except Exception as e:
+        logger.error(f"Secure processing error for job {job_id}: {str(e)}")
+        if session_id not in secure_job_results:
+            secure_job_results[session_id] = {}
+            
+        secure_job_results[session_id][job_id] = {
+            "status": "failed",
+            "error": "Processing failed with security checks",
+            "execution_time": (datetime.now() - start_time).total_seconds()
+        }
+
 def serialize_result(result: dict) -> dict:
     """Sanitize and keep meaningful structure from the agent's result"""
     serialized = {
@@ -106,60 +266,42 @@ def serialize_result(result: dict) -> dict:
         "agent_messages": []
     }
 
-    # Sanitize agent messages
+    # Sanitize agent messages - handle both BaseMessage objects and strings
     messages = result.get("messages", [])
-    serialized["agent_messages"] = [
-        {
-            "content": m.content,
-            "timestamp": getattr(m, "additional_kwargs", {}).get("timestamp", ""),
-        }
-        for m in messages if isinstance(m, BaseMessage)
-    ]
+    serialized["agent_messages"] = []
+    
+    for m in messages:
+        if isinstance(m, BaseMessage):
+            # Handle LangChain message objects
+            serialized["agent_messages"].append({
+                "content": str(m.content),
+                "timestamp": getattr(m, "additional_kwargs", {}).get("timestamp", ""),
+                "type": m.__class__.__name__
+            })
+        elif isinstance(m, str):
+            # Handle plain string messages
+            serialized["agent_messages"].append({
+                "content": m,
+                "timestamp": "",
+                "type": "string"
+            })
+        else:
+            # Handle any other type by converting to string
+            serialized["agent_messages"].append({
+                "content": str(m),
+                "timestamp": "",
+                "type": "unknown"
+            })
 
     # Add download URL if cv_path exists
     if serialized["cv_path"]:
         filename = os.path.basename(serialized["cv_path"])
         serialized["cv_filename"] = filename
-        serialized["cv_download_url"] = f"/api/download/{filename}"
+        # For secure downloads, we'll set this during processing with session_id
+        serialized["cv_download_url"] = ""
 
     return serialized
     
-def background_process(job_id, user_prompt, resume_path, user_id):
-    start_time = datetime.now()
-    try:
-        # Add job_id to the request for HITL support
-        result = multi_agent.process_request_with_hitl(user_prompt, resume_path, user_id, job_id)
-        execution_time = (datetime.now() - start_time).total_seconds()
-
-        if result.get("success"):
-            safe_result = serialize_result({**result, "execution_time": execution_time})
-            job_results[job_id] = {
-                "status": "completed",
-                "result": safe_result,
-                "summary": "✅ Job completed successfully",
-            }
-        elif result.get("hitl_checkpoint"):
-            # Job needs human approval
-            job_results[job_id].update({
-                "status": "awaiting_approval",
-                "hitl_checkpoint": result["hitl_checkpoint"],
-                "hitl_data": result["hitl_data"],
-                "partial_result": result
-            })
-        else:
-            job_results[job_id] = {
-                "status": "failed",
-                "error": result.get("error", "Unknown error"),
-                "execution_time": execution_time
-            }
-
-    except Exception as e:
-        job_results[job_id] = {
-            "status": "error",
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "execution_time": (datetime.now() - start_time).total_seconds()
-        }
 
 #########################################
 # Health Check Endpoints               #
@@ -180,7 +322,14 @@ def health_check():
     
     return jsonify(status), 200 if multi_agent else 503
 
+@app.route("/api/session", methods=['POST'])
+@limiter.limit("5 per minute")
+def create_session():
+    """Create anonymous session without signup"""
+    return create_anonymous_session_endpoint()
+
 @app.route("/api/status", methods=['GET'])
+@limiter.limit("20 per minute")
 def system_status():
     """Detailed system status with performance metrics"""
     if not multi_agent:
@@ -239,227 +388,307 @@ def system_status():
 #########################################
 
 @app.route('/api/status/<job_id>', methods=['GET'])
-def check_job_status(job_id):
+@require_session
+@limiter.limit("60 per hour")
+def secure_check_job_status(job_id):
     """
-    🔍 Returns the current status of a background job.
+    Secure job status checking with session validation
     """
-    job_info = job_results.get(job_id)
+    session_data = g.session_data
+    session_id = session_data['session_id']
     
-    if not job_info:
-        return create_error_response(f"No job found with ID: {job_id}", 404)
-
+    # Check if session has any jobs
+    if session_id not in secure_job_results:
+        return create_secure_error_response("No jobs found for session", 404)
+    
+    # Check if specific job exists in session
+    session_jobs = secure_job_results[session_id]
+    if job_id not in session_jobs:
+        return create_secure_error_response("Job not found", 404)
+    
+    job_info = session_jobs[job_id]
+    
     if job_info["status"] == "processing":
-        return jsonify({"status": "processing", "job_id": job_id}), 200
+        return jsonify({
+            "status": "processing", 
+            "job_id": job_id,
+            "session_id": session_id
+        }), 200
 
-    if job_info["status"] == "failed":
+    elif job_info["status"] == "failed":
         return jsonify({
             "status": "failed",
             "job_id": job_id,
+            "session_id": session_id,
             "error": job_info.get("error", "Unknown error")
         }), 200
 
-    if job_info["status"] == "completed":
+    elif job_info["status"] == "completed":
         return jsonify({
             "status": "completed",
             "job_id": job_id,
+            "session_id": session_id,
             "result": job_info.get("result", {}),
             "summary": job_info.get("summary", "")
         }), 200
 
-    return create_error_response("Unexpected job status", 500)
+    elif job_info["status"] == "awaiting_approval":
+        return jsonify({
+            "status": "awaiting_approval",
+            "job_id": job_id,
+            "session_id": session_id,
+            "hitl_checkpoint": job_info.get("hitl_checkpoint"),
+            "hitl_data": job_info.get("hitl_data", {}),
+            "partial_result": job_info.get("partial_result", {}),
+            "revision": job_info.get("revision", False)  # Indicate if this is a revised plan
+        }), 200
+
+    return create_secure_error_response("Unexpected job status", 500)
 
 @app.route('/api/process', methods=['POST'])
-def process_job_hunting_request():
+@require_session
+@limiter.limit("20 per hour")
+def secure_process_job_hunting_request():
     """
-    🚀 UNIFIED INTELLIGENT ENDPOINT WITH PERFORMANCE TRACKING
-    
-    Handles any job hunting request with optional file upload and user tracking.
-    The multi-agent system autonomously decides which agents to involve.
-    All requests are tracked for performance analysis.
+    Secure job hunting processing endpoint with full security measures
     """
     
-    start_time = datetime.now()
+    if not multi_agent:
+        return create_secure_error_response("Service temporarily unavailable", 503)
+    
+    session_data = g.session_data
+    session_id = session_data['session_id']
     
     try:
-        if not multi_agent:
-            return create_error_response("Multi-agent system not available", 503)
-        
-        # Extract user_id for tracking
-        user_id = None
-        
-        # Handle file upload (optional)
+        # Handle secure file upload
         resume_path = None
         if 'file' in request.files:
             file = request.files['file']
             if file and file.filename != '':
-                resume_path, error = save_uploaded_file(file)
+                resume_path, error = save_uploaded_file_secure(file, session_id)
                 if error:
-                    return create_error_response(error)
-                logger.info(f"Resume uploaded: {resume_path}")
+                    return create_secure_error_response(error, 400)
         
-        # Get user request/prompt and user_id
+        # Get and sanitize user prompt
         user_prompt = None
-        
         if request.form.get('prompt'):
             user_prompt = request.form.get('prompt')
-            user_id = request.form.get('user_id', f"user_{int(start_time.timestamp())}")
-            logger.info("Received prompt from form data")
-        
         elif request.is_json:
             data = request.get_json()
             user_prompt = data.get('prompt') or data.get('request') or data.get('message')
-            user_id = data.get('user_id', f"user_{int(start_time.timestamp())}")
-            # Also check if resume_path was provided in JSON
-            if not resume_path and data.get('resume_path'):
-                resume_path = data.get('resume_path')
-                if not os.path.exists(resume_path):
-                    return create_error_response(f"Resume file not found: {resume_path}")
-            logger.info("Received prompt from JSON data")
         
-        # Validate that we have a prompt
         if not user_prompt:
-            return create_error_response(
-                "No prompt provided. Please include 'prompt', 'request', or 'message' in your request."
-            )
+            return create_secure_error_response("Prompt is required", 400)
         
-        logger.info(f"Processing intelligent request: {user_prompt[:100]}...")
-        logger.info(f"User ID: {user_id}")
-        if resume_path:
-            logger.info(f"Resume file: {os.path.basename(resume_path)}")
+        # Additional input validation
+        if len(user_prompt.strip()) < 5:
+            return create_secure_error_response("Prompt too short", 400)
         
-        job_id = str(uuid.uuid4())
-
-        # Initialize job status with HITL support
-        job_results[job_id] = {
+        # Generate secure job ID
+        job_id = f"{session_id[:8]}_{uuid.uuid4().hex[:16]}"
+        
+        # Initialize secure job storage for session
+        if session_id not in secure_job_results:
+            secure_job_results[session_id] = {}
+        
+        secure_job_results[session_id][job_id] = {
             "status": "processing",
-            "start_time": datetime.now().isoformat(),
-            "user_id": user_id,
-            "hitl_checkpoint": None,  # 'coordinator_plan' or 'job_role_clarification'
-            "hitl_data": None,  # Data requiring approval
-            "hitl_response": None  # User's approval response
+            "start_time": datetime.utcnow().isoformat(),
+            "session_id": session_id
         }
-
-        # Start background thread with user_id
+        
+        # Start secure background processing
         thread = threading.Thread(
-            target=background_process,
-            args=(job_id, user_prompt, resume_path, user_id),
-            daemon=True
-        )
-        thread.start()
-
-        # Return job ID immediately to frontend
-        return jsonify({
-            "message": "🧠 Request is being processed in the background with performance tracking.",
-            "job_id": job_id,
-            "user_id": user_id,
-            "status_check_url": f"/api/status/{job_id}",
-            "feedback_url": f"/api/feedback"
-        }), 202
-            
-    except Exception as e:
-        logger.error(f"❌ Endpoint error: {e}")
-        logger.error(traceback.format_exc())
-        execution_time = (datetime.now() - start_time).total_seconds()
-        
-        return create_error_response(
-            "Internal server error", 
-            500, 
-            {
-                "error_details": str(e),
-                "execution_time": f"{execution_time:.2f}s"
-            }
-        )
-
-def continue_after_approval(job_id, approval_response):
-    """Continue processing after human approval"""
-    start_time = datetime.now()
-    try:
-        job = job_results[job_id]
-        partial_result = job.get('partial_result', {})
-        
-        logger.info(f"🔄 Continuing job {job_id} after approval: {approval_response}")
-        
-        # Continue from where we left off - this is a simplified approach
-        # In a full implementation, you'd resume the exact agent workflow state
-        result = multi_agent.continue_from_approval(partial_result, approval_response)
-        execution_time = (datetime.now() - start_time).total_seconds()
-
-        if result.get("success"):
-            safe_result = serialize_result({**result, "execution_time": execution_time})
-            job_results[job_id].update({
-                "status": "completed",
-                "result": safe_result,
-                "summary": "✅ Job completed successfully after approval",
-            })
-        else:
-            job_results[job_id].update({
-                "status": "failed",
-                "error": result.get("error", "Unknown error after approval"),
-                "execution_time": execution_time
-            })
-
-    except Exception as e:
-        job_results[job_id].update({
-            "status": "error",
-            "error": f"Error continuing after approval: {str(e)}",
-            "traceback": traceback.format_exc(),
-            "execution_time": (datetime.now() - start_time).total_seconds()
-        })
-
-#########################################
-# Human-in-the-Loop Endpoints         #
-#########################################
-
-@app.route('/api/approve/<job_id>', methods=['POST'])
-def approve_checkpoint(job_id):
-    """Submit approval for a HITL checkpoint"""
-    try:
-        if job_id not in job_results:
-            return create_error_response("Job not found", 404)
-            
-        data = request.get_json()
-        approval_response = data.get('response')
-        
-        if not approval_response:
-            return create_error_response("Approval response required")
-        
-        job = job_results[job_id]
-        
-        if job['status'] != 'awaiting_approval':
-            return create_error_response("Job is not awaiting approval")
-        
-        # Store the approval response
-        job['hitl_response'] = approval_response
-        job['status'] = 'processing'
-        
-        logger.info(f"✅ HITL approval received for job {job_id}: {approval_response}")
-        
-        # Continue processing in background thread
-        thread = threading.Thread(
-            target=continue_after_approval,
-            args=(job_id, approval_response),
+            target=background_process_secure,
+            args=(job_id, user_prompt, resume_path, session_data),
             daemon=True
         )
         thread.start()
         
         return jsonify({
             "success": True,
-            "message": "Approval received - continuing processing",
+            "message": "Request is being processed securely",
+            "job_id": job_id,
+            "session_id": session_id,
+            "status_check_url": f"/api/status/{job_id}",
+            "estimated_time": "5-15 seconds"
+        }), 202
+        
+    except SecurityException as e:
+        logger.warning(f"Security violation from session {session_id[:8]}***: {str(e)}")
+        return create_secure_error_response(str(e), 403)
+    except Exception as e:
+        logger.error(f"Processing error for session {session_id[:8]}***")
+        return create_secure_error_response("Request processing failed", 500)
+
+#########################################
+# HITL Approval Endpoints             #
+#########################################
+
+@app.route('/api/approve/<job_id>', methods=['POST'])
+@require_session
+@limiter.limit("10 per hour")
+def secure_approve_job(job_id):
+    """
+    Handle HITL (Human-In-The-Loop) approval for jobs
+    """
+    try:
+        session_data = g.session_data
+        session_id = session_data['session_id']
+        
+        if not request.is_json:
+            return create_secure_error_response("Request must be JSON", 400)
+        
+        data = request.get_json()
+        approval_response = data.get('response')
+        
+        if not approval_response:
+            return create_secure_error_response("Approval response is required", 400)
+        
+        # Check if job exists in session
+        if session_id not in secure_job_results or job_id not in secure_job_results[session_id]:
+            return create_secure_error_response("Job not found", 404)
+        
+        job_info = secure_job_results[session_id][job_id]
+        
+        # Check if job is waiting for approval
+        if job_info.get("status") != "awaiting_approval":
+            return create_secure_error_response("Job is not awaiting approval", 400)
+        
+        # Get partial state and continue processing
+        partial_state = job_info.get("partial_result")
+        if not partial_state:
+            return create_secure_error_response("No partial state found", 500)
+        
+        
+        # Continue processing with approval using thread_id
+        thread_id = job_info.get("thread_id")
+        if not thread_id:
+            return create_secure_error_response("No thread ID found for job", 500)
+        
+        # IMMEDIATELY update job status to processing to fix race condition with polling
+        # This applies to both approvals AND change requests - both require processing time
+        secure_job_results[session_id][job_id]["status"] = "processing"
+        if approval_response.get("approved") == False:
+            logger.info(f"Job {job_id} status updated to 'processing' for plan revision request")
+        else:
+            logger.info(f"Job {job_id} status updated to 'processing' immediately after approval")
+            
+        # Process approval in background to avoid HTTP timeouts
+        def process_approval_async():
+            try:
+                result = multi_agent.continue_from_approval(thread_id, approval_response)
+                
+                # Update job status based on result
+                
+                if result.get("success") or result.get("revision_applied"):
+                    execution_time = result.get("execution_time", 0)
+                    safe_result = serialize_result({**result, "execution_time": execution_time})
+                    
+                    # Update download URLs for secure access
+                    if safe_result.get("cv_filename"):
+                        safe_result["cv_download_url"] = f"/api/download/{session_id}/{safe_result['cv_filename']}"
+                    
+                    # Determine completion message based on whether this was a revision
+                    summary = "✅ Job completed successfully after approval"
+                    if result.get("revision_applied"):
+                        summary = "✅ Job completed successfully after plan revision"
+                    
+                    secure_job_results[session_id][job_id] = {
+                        "status": "completed",
+                        "result": safe_result,
+                        "summary": summary,
+                    }
+                    
+                elif result.get("hitl_checkpoint"):
+                    # Check if this is a revision (user rejected plan) or just execution progress
+                    if approval_response.get("approved") == False:
+                        # Handle plan revision - user requested changes, new plan created
+                        secure_job_results[session_id][job_id].update({
+                            "status": "awaiting_approval",
+                            "hitl_checkpoint": result.get("hitl_checkpoint"),
+                            "hitl_data": result.get("hitl_data", {}),
+                            "thread_id": result.get("thread_id"),  # Keep the same thread_id
+                            "revision": result.get("revision", True),  # Mark as revision
+                            "partial_result": serialize_result(result)
+                        })
+                    else:
+                        # User approved plan, but execution hit another checkpoint
+                        # This should continue processing, not wait for approval again
+                        logger.info(f"Job {job_id} approved and continuing execution, hit intermediate checkpoint")
+                        
+                        # Continue processing from the intermediate checkpoint automatically
+                        try:
+                            # Auto-approve intermediate checkpoints to continue execution
+                            continued_result = multi_agent.continue_from_approval(thread_id, {"approved": True})
+                            
+                            # Handle the continued result
+                            if continued_result.get("success") or continued_result.get("revision_applied"):
+                                execution_time = continued_result.get("execution_time", 0)
+                                safe_continued_result = serialize_result({**continued_result, "execution_time": execution_time})
+                                
+                                # Update download URLs for secure access
+                                if safe_continued_result.get("cv_filename"):
+                                    safe_continued_result["cv_download_url"] = f"/api/download/{session_id}/{safe_continued_result['cv_filename']}"
+                                
+                                secure_job_results[session_id][job_id] = {
+                                    "status": "completed",
+                                    "result": safe_continued_result,
+                                    "summary": "✅ Job completed successfully",
+                                }
+                            else:
+                                # Mark as processing if still ongoing
+                                secure_job_results[session_id][job_id].update({
+                                    "status": "processing",
+                                    "message": "Executing approved plan..."
+                                })
+                        except Exception as continue_error:
+                            logger.error(f"Failed to auto-continue job {job_id}: {continue_error}")
+                            # Fallback to processing status
+                            secure_job_results[session_id][job_id].update({
+                                "status": "processing",
+                                "message": "Executing approved plan..."
+                            })
+                else:
+                    # Actual failure case
+                    logger.error(f"Job {job_id} failed after approval: {result.get('error', 'Unknown error')}")
+                    secure_job_results[session_id][job_id] = {
+                        "status": "failed",
+                        "error": result.get("error", "Processing failed after approval"),
+                    }
+            except Exception as process_error:
+                logger.error(f"Async approval processing error: {process_error}")
+                secure_job_results[session_id][job_id] = {
+                    "status": "failed",
+                    "error": f"Processing failed: {str(process_error)}",
+                }
+        
+        # Start background processing
+        thread = threading.Thread(target=process_approval_async, daemon=True)
+        thread.start()
+        
+        # Respond immediately to prevent timeout
+        return jsonify({
+            "success": True,
+            "message": "Approval processed successfully - execution in progress",
             "job_id": job_id
-        })
+        }), 200
         
     except Exception as e:
-        logger.error(f"Approval error: {e}")
-        return create_error_response(f"Failed to process approval: {str(e)}")
+        logger.error(f"Approval processing error for job {job_id}: {str(e)}")
+        return create_secure_error_response("Failed to process approval", 500)
+
 
 #########################################
 # User Feedback Endpoints             #
 #########################################
 
 @app.route('/api/feedback', methods=['POST'])
-def collect_user_feedback():
+@require_session
+@limiter.limit("10 per hour")
+def secure_collect_user_feedback():
     """
-    🎯 Collect user feedback for performance evaluation
+    Collect user feedback for performance evaluation
     
     Expected JSON:
     {
@@ -503,7 +732,6 @@ def collect_user_feedback():
         )
         
         if feedback_result.get('success'):
-            logger.info(f"User feedback collected: {satisfaction}/10 satisfaction for user {user_id}")
             
             return create_success_response({
                 "feedback_recorded": True,
@@ -520,30 +748,191 @@ def collect_user_feedback():
         return create_error_response("Failed to collect feedback", 500, str(e))
 
 #########################################
+# File Download Endpoint               #
+#########################################
+
+@app.route('/api/download/<session_id>/<filename>', methods=['GET'])
+@limiter.limit("20 per hour")
+def secure_download_file(session_id, filename):
+    """Secure download with session validation from URL"""
+    try:
+        # Get client IP for session validation
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        
+        # Validate session directly (no headers needed for downloads)
+        if session_id not in security_manager.active_sessions:
+            logger.info(f"Session {session_id[:8]}*** not found in active sessions")
+            return create_secure_error_response("Invalid session", 401)
+            
+        session_data = security_manager.active_sessions[session_id]
+        
+        # Check if session is expired
+        if security_manager._is_session_expired(session_data):
+            return create_secure_error_response("Session expired", 401)
+        
+        # Verify IP address (basic session hijacking protection)
+        if session_data.get('client_ip') != client_ip:
+            logger.warning(f"IP mismatch for download session {session_id[:8]}***: {session_data.get('client_ip')} vs {client_ip}")
+            return create_secure_error_response("Access denied", 403)
+        
+        
+        # Secure filename validation
+        secure_filename_clean = security_manager.validate_filename(filename)
+        if not secure_filename_clean:
+            return create_secure_error_response("Invalid filename", 400)
+        
+        
+        # Check if filename is a URL (Cloudinary storage)
+        if secure_filename_clean.startswith(('http://', 'https://')) or secure_filename_clean.startswith('data:'):
+            # Redirect to external URL or handle data URL
+            if secure_filename_clean.startswith('data:'):
+                # Handle base64 data URLs
+                try:
+                    import base64
+                    header, encoded = secure_filename_clean.split(';base64,', 1)
+                    mime_type = header.replace('data:', '')
+                    file_data = base64.b64decode(encoded)
+                    
+                    # Extract original filename from secure_filename_clean or use generic
+                    download_name = filename if filename != secure_filename_clean else "download.pdf"
+                    
+                    return Response(
+                        file_data,
+                        mimetype=mime_type,
+                        headers={
+                            'Content-Disposition': f'attachment; filename="{download_name}"'
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to handle data URL: {e}")
+                    return create_secure_error_response("Invalid file format", 400)
+            else:
+                # External URL - redirect
+                return redirect(secure_filename_clean)
+        
+        # Traditional file path handling (local development)
+        if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV'):
+            # In serverless, files should be URLs
+            return create_secure_error_response("File not available in serverless environment", 404)
+        
+        # Build secure file path for local development
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename_clean)
+        
+        if not os.path.exists(filepath):
+            return create_secure_error_response("File not found", 404)
+        
+        # Validate file belongs to session (additional security check)
+        if not security_manager.validate_file_access(filepath, session_id):
+            return create_secure_error_response("Access denied", 403)
+        
+        # Determine MIME type
+        mime_type = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
+        
+        return send_file(
+            filepath,
+            as_attachment=True,
+            download_name=secure_filename_clean,
+            mimetype=mime_type
+        )
+        
+    except Exception as e:
+        logger.error(f"Secure download error: {e}")
+        return create_secure_error_response("Download failed", 500)
+
+#########################################
+# Example Usage Endpoint               #
+#########################################
+
+@app.route('/api/examples', methods=['GET'])
+@limiter.limit("10 per minute")
+def get_examples():
+    """Get example requests and expected performance"""
+    
+    examples = {
+        "resume_analysis": {
+            "prompt": "Please analyze my resume and tell me how I can improve it",
+            "description": "Analyzes resume for strengths, weaknesses, and provides improvement suggestions",
+            "expected_agents": ["Resume Analyst"],
+            "expected_time": "2-5 seconds",
+            "performance_tracked": True
+        },
+        "job_search": {
+            "prompt": "Find me software engineering jobs that match my background",
+            "description": "Searches for relevant job opportunities based on your profile",
+            "expected_agents": ["Resume Analyst", "Job Researcher"],
+            "expected_time": "5-10 seconds",
+            "performance_tracked": True
+        },
+        "cv_creation": {
+            "prompt": "Create a professional CV optimized for tech companies",
+            "description": "Generates an ATS-optimized CV tailored for specific industries",
+            "expected_agents": ["Resume Analyst", "Job Researcher", "CV Creator"],
+            "expected_time": "8-15 seconds",
+            "performance_tracked": True
+        },
+        "complete_workflow": {
+            "prompt": "I need complete job hunting help - analyze my resume, find jobs, and create an optimized CV",
+            "description": "Full job hunting assistance with all agents working together",
+            "expected_agents": ["Resume Analyst", "Job Researcher", "CV Creator"],
+            "expected_time": "10-20 seconds",
+            "performance_tracked": True
+        },
+        "job_matching": {
+            "prompt": "Compare my resume against the jobs you find and tell me which ones are the best fit",
+            "description": "Analyzes job compatibility and provides application strategy",
+            "expected_agents": ["Resume Analyst", "Job Researcher", "Job Matcher"],
+            "expected_time": "8-15 seconds",
+            "performance_tracked": True
+        },
+        "feedback_example": {
+            "endpoint": "/api/feedback",
+            "method": "POST",
+            "description": "Submit feedback after using the system",
+            "example_payload": {
+                "session_id": "from_job_result",
+                "user_id": "your_user_id",
+                "satisfaction": 8.5,
+                "resume_helpful": True,
+                "jobs_helpful": True,
+                "would_use_again": True
+            }
+        }
+    }
+    
+    return create_success_response(examples, "Example requests and performance expectations")
+
+#########################################
 # Performance & Analytics Endpoint    #
 #########################################
 
 @app.route('/api/performance', methods=['GET'])
+@limiter.limit("10 per minute")
 def get_comprehensive_performance():
     """
-    📊 UNIFIED PERFORMANCE ENDPOINT
+    UNIFIED PERFORMANCE ENDPOINT WITH SECURITY
     
     Get all performance data in one comprehensive response:
     - System health and metrics
     - User satisfaction and outcomes  
     - Agent performance breakdown
     - Effectiveness scores and grades
-    - Benchmark comparisons
-    - Recommendations
+    - System monitoring data
+    - Security metrics
     """
     try:
         if not multi_agent:
-            return create_error_response("Multi-agent system not available", 503)
+            return create_secure_error_response("Multi-agent system not available", 503)
         
         # Get all performance data
         system_performance = performance_evaluator.get_system_performance_summary()
         user_outcomes = multi_agent.get_user_outcomes_summary()
         effectiveness_report = multi_agent.get_system_effectiveness_report()
+        
+        # Get system monitoring data
+        monitoring_data = system_monitor.to_dict()
         
         # Create comprehensive performance data
         performance_data = {
@@ -605,116 +994,35 @@ def get_comprehensive_performance():
             "recommendations": {
                 "top_priorities": effectiveness_report.get("recommendations", [])[:3],
                 "all_recommendations": effectiveness_report.get("recommendations", []),
-                "system_health_actions": performance_evaluator._generate_recommendations()[:3]
+                "system_health_actions": performance_evaluator._generate_recommendations()[:3] if hasattr(performance_evaluator, '_generate_recommendations') else []
             },
             
             # Meta Information
             "meta": {
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime.utcnow().isoformat(),
                 "data_freshness": "real-time",
-                "report_version": "2.0",
-                "tracking_since": system_performance.get("last_updated", "Unknown")
-            }
+                "report_version": "3.0-secure",
+                "tracking_since": system_performance.get("last_updated", "Unknown"),
+                "security_enabled": True,
+                "anonymous_sessions": True
+            },
+            
+            # System Monitoring Data
+            "system_health": monitoring_data.get("system_health", {}),
+            "security_metrics": monitoring_data.get("security_metrics", {}),
+            "recent_alerts": monitoring_data.get("recent_alerts", [])
         }
         
-        return create_success_response(performance_data, "Comprehensive performance data retrieved")
+        return jsonify({
+            "success": True,
+            "message": "Comprehensive performance data retrieved",
+            "data": performance_data,
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
         
     except Exception as e:
-        logger.error(f"Comprehensive performance endpoint error: {e}")
-        logger.error(traceback.format_exc())
-        return create_error_response("Failed to get performance data", 500, str(e))
-
-#########################################
-# File Download Endpoint               #
-#########################################
-
-@app.route('/api/download/<path:filename>', methods=['GET'])
-def download_file(filename):
-    """Download generated files (CVs, reports, etc.)"""
-    try:
-        # Secure the filename to prevent directory traversal
-        filename = secure_filename(filename)
-        filepath = os.path.join(tempfile.gettempdir(), filename)
-        
-        if not os.path.exists(filepath):
-            return create_error_response("File not found", 404)
-        
-        logger.info(f"Serving file download: {filename}")
-        
-        # Determine MIME type
-        mime_type = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
-        
-        return send_file(
-            filepath,
-            as_attachment=True,
-            download_name=filename,
-            mimetype=mime_type
-        )
-        
-    except Exception as e:
-        logger.error(f"File download error: {e}")
-        return create_error_response("File download failed", 500, str(e))
-
-#########################################
-# Example Usage Endpoint               #
-#########################################
-
-@app.route('/api/examples', methods=['GET'])
-def get_examples():
-    """Get example requests and expected performance"""
-    
-    examples = {
-        "resume_analysis": {
-            "prompt": "Please analyze my resume and tell me how I can improve it",
-            "description": "Analyzes resume for strengths, weaknesses, and provides improvement suggestions",
-            "expected_agents": ["Resume Analyst"],
-            "expected_time": "2-5 seconds",
-            "performance_tracked": True
-        },
-        "job_search": {
-            "prompt": "Find me software engineering jobs that match my background",
-            "description": "Searches for relevant job opportunities based on your profile",
-            "expected_agents": ["Resume Analyst", "Job Researcher"],
-            "expected_time": "5-10 seconds",
-            "performance_tracked": True
-        },
-        "cv_creation": {
-            "prompt": "Create a professional CV optimized for tech companies",
-            "description": "Generates an ATS-optimized CV tailored for specific industries",
-            "expected_agents": ["Resume Analyst", "Job Researcher", "CV Creator"],
-            "expected_time": "8-15 seconds",
-            "performance_tracked": True
-        },
-        "complete_workflow": {
-            "prompt": "I need complete job hunting help - analyze my resume, find jobs, and create an optimized CV",
-            "description": "Full job hunting assistance with all agents working together",
-            "expected_agents": ["Resume Analyst", "Job Researcher", "CV Creator"],
-            "expected_time": "10-20 seconds",
-            "performance_tracked": True
-        },
-        "job_matching": {
-            "prompt": "Compare my resume against the jobs you find and tell me which ones are the best fit",
-            "description": "Analyzes job compatibility and provides application strategy",
-            "expected_agents": ["Resume Analyst", "Job Researcher", "Job Matcher"],
-            "expected_time": "8-15 seconds",
-            "performance_tracked": True
-        },
-        "feedback_example": {
-            "endpoint": "/api/feedback",
-            "method": "POST",
-            "description": "Submit feedback after using the system",
-            "example_payload": {
-                "session_id": "from_job_result",
-                "user_id": "your_user_id",
-                "satisfaction": 8.5,
-                "resume_helpful": True,
-                "jobs_helpful": True,
-                "would_use_again": True
-            }
-        }
-    }
-    
-    return create_success_response(examples, "Example requests and performance expectations")
+        logger.error(f"Performance endpoint error: {str(e)}")
+        return create_secure_error_response("Failed to get performance data", 500)
 
 #########################################
 # Error Handlers                       #
@@ -735,3 +1043,13 @@ def internal_error(e):
     """Handle internal server error"""
     logger.error(f"Internal server error: {e}")
     return create_error_response("Internal server error", 500)
+
+if __name__ == '__main__':
+    
+    # Run with security settings
+    app.run(
+        host='127.0.0.1',  # Localhost only for security
+        port=5000, 
+        debug=False,       # Disable debug in secure mode
+        threaded=True
+    )

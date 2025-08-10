@@ -15,7 +15,10 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import type { ChartData, ChartOptions } from 'chart.js';
-import { Activity, RefreshCw, TrendingUp, Users, CheckCircle, AlertTriangle, Clock, Zap } from 'lucide-react';
+import { 
+  Activity, RefreshCw, TrendingUp, Users, CheckCircle, AlertTriangle, Clock, Zap,
+  Shield, Server, Database, Cpu, HardDrive, Wifi, Lock, Eye, Bell, Monitor
+} from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(
@@ -103,6 +106,38 @@ interface BenchmarkComparisonData {
   };
 }
 
+// System Monitoring Interfaces
+interface SystemHealthData {
+  cpu_usage: number;
+  memory_usage: number;
+  disk_usage: number;
+  active_connections: number;
+  response_time_p95: number;
+  error_rate: number;
+  uptime_seconds: number;
+  last_restart: string;
+}
+
+interface SecurityMetrics {
+  blocked_requests: number;
+  suspicious_activities: number;
+  rate_limit_hits: number;
+  active_sessions: number;
+  failed_authentications: number;
+  vulnerability_scan_status: string;
+  last_security_scan: string;
+  threat_level: 'low' | 'medium' | 'high';
+}
+
+interface AlertData {
+  id: string;
+  type: 'info' | 'warning' | 'error' | 'critical';
+  message: string;
+  timestamp: string;
+  resolved: boolean;
+  component: string;
+}
+
 interface PerformanceData {
   quick_stats: QuickStats;
   system_overview: SystemOverview;
@@ -110,6 +145,9 @@ interface PerformanceData {
   agent_performance: AgentPerformance;
   effectiveness: Effectiveness;
   recommendations: Recommendations;
+  system_health?: SystemHealthData;
+  security_metrics?: SecurityMetrics;
+  recent_alerts?: AlertData[];
 }
 
 const PerformanceDashboard = () => {
@@ -195,6 +233,13 @@ const PerformanceDashboard = () => {
         {/* Quick Stats Grid */}
         <QuickStatsGrid stats={performance?.quick_stats} overview={performance?.system_overview} />
 
+        {/* System Health Monitoring Section */}
+        <SystemHealthSection 
+          health={performance?.system_health} 
+          security={performance?.security_metrics}
+          alerts={performance?.recent_alerts}
+        />
+
         {/* Main Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           
@@ -206,6 +251,12 @@ const PerformanceDashboard = () => {
           
         </div>
 
+        {/* Security & Resource Monitoring */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <SecurityMonitoringCard security={performance?.security_metrics} />
+          <ResourceUsageChart health={performance?.system_health} />
+        </div>
+
         {/* Agent Performance Grid */}
         <AgentPerformanceGrid agents={performance?.agent_performance} />
 
@@ -215,8 +266,11 @@ const PerformanceDashboard = () => {
           <RecommendationsCard recommendations={performance?.recommendations} />
         </div>
 
-        {/* Benchmark Comparison */}
-        <BenchmarkComparison benchmarks={performance?.effectiveness?.benchmark_comparison} />
+        {/* System Alerts & Benchmark Comparison */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <SystemAlertsCard alerts={performance?.recent_alerts} />
+          <BenchmarkComparison benchmarks={performance?.effectiveness?.benchmark_comparison} />
+        </div>
 
       </div>
     </div>
@@ -721,6 +775,307 @@ const BenchmarkComparison = memo(({ benchmarks }: BenchmarkComparisonProps) => {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+});
+
+// System Health Section Component
+interface SystemHealthSectionProps {
+  health: SystemHealthData | undefined;
+  security: SecurityMetrics | undefined;
+  alerts: AlertData[] | undefined;
+}
+const SystemHealthSection = memo(({ health, security, alerts }: SystemHealthSectionProps) => {
+  const formatUptime = useCallback((seconds: number) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${days}d ${hours}h ${mins}m`;
+  }, []);
+
+  const getHealthStatus = useCallback(() => {
+    if (!health) return { status: 'unknown', color: 'gray' };
+    
+    const issues = [];
+    if (health.cpu_usage > 80) issues.push('High CPU');
+    if (health.memory_usage > 85) issues.push('High Memory');
+    if (health.error_rate > 5) issues.push('High Error Rate');
+    
+    if (issues.length === 0) return { status: 'healthy', color: 'green' };
+    if (issues.length === 1) return { status: 'warning', color: 'yellow' };
+    return { status: 'critical', color: 'red' };
+  }, [health]);
+
+  const healthStatus = getHealthStatus();
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-medium text-black flex items-center gap-2">
+          <Server className="w-5 h-5 text-gray-600" />
+          System Health Overview
+        </h2>
+        <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+          healthStatus.color === 'green' 
+            ? 'bg-green-100 text-green-800' 
+            : healthStatus.color === 'yellow'
+            ? 'bg-yellow-100 text-yellow-800'
+            : healthStatus.color === 'red'
+            ? 'bg-red-100 text-red-800'
+            : 'bg-gray-100 text-gray-800'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            healthStatus.color === 'green' 
+              ? 'bg-green-500' 
+              : healthStatus.color === 'yellow'
+              ? 'bg-yellow-500'
+              : healthStatus.color === 'red'
+              ? 'bg-red-500'
+              : 'bg-gray-500'
+          }`} />
+          {healthStatus.status}
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <Cpu className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health?.cpu_usage || 0}%</p>
+          <p className="text-xs text-gray-500">CPU Usage</p>
+        </div>
+        
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <Monitor className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health?.memory_usage || 0}%</p>
+          <p className="text-xs text-gray-500">Memory</p>
+        </div>
+        
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <HardDrive className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health?.disk_usage || 0}%</p>
+          <p className="text-xs text-gray-500">Disk Usage</p>
+        </div>
+        
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <Wifi className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health?.active_connections || 0}</p>
+          <p className="text-xs text-gray-500">Connections</p>
+        </div>
+        
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <Clock className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health?.response_time_p95 || 0}ms</p>
+          <p className="text-xs text-gray-500">P95 Response</p>
+        </div>
+        
+        <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+          <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-2xl font-light text-black">{health ? formatUptime(health.uptime_seconds) : '0d 0h 0m'}</p>
+          <p className="text-xs text-gray-500">Uptime</p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Security Monitoring Card Component
+interface SecurityMonitoringCardProps {
+  security: SecurityMetrics | undefined;
+}
+const SecurityMonitoringCard = memo(({ security }: SecurityMonitoringCardProps) => {
+  const getThreatLevelStyle = useCallback((level: string | undefined) => {
+    switch (level) {
+      case 'low': return { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
+      case 'medium': return { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-200' };
+      case 'high': return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' };
+      default: return { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-200' };
+    }
+  }, []);
+
+  const threatStyle = getThreatLevelStyle(security?.threat_level);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-medium text-black flex items-center gap-2">
+          <Shield className="w-5 h-5 text-gray-600" />
+          Security Monitoring
+        </h3>
+        <div className={`px-3 py-1 rounded-lg border ${threatStyle.bg} ${threatStyle.text} ${threatStyle.border} text-sm font-medium`}>
+          {security?.threat_level || 'unknown'} risk
+        </div>
+      </div>
+      
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <Lock className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+            <p className="text-xl font-light text-black">{security?.active_sessions || 0}</p>
+            <p className="text-xs text-gray-500">Active Sessions</p>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <AlertTriangle className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+            <p className="text-xl font-light text-black">{security?.blocked_requests || 0}</p>
+            <p className="text-xs text-gray-500">Blocked Requests</p>
+          </div>
+        </div>
+        
+        <div className="space-y-2 pt-4 border-t border-gray-100">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Suspicious Activities</span>
+            <span className="font-medium text-black">{security?.suspicious_activities || 0}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Rate Limit Hits</span>
+            <span className="font-medium text-black">{security?.rate_limit_hits || 0}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Failed Auth</span>
+            <span className="font-medium text-black">{security?.failed_authentications || 0}</span>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+            <span className="text-sm text-gray-600">Last Security Scan</span>
+            <span className="text-sm text-black">
+              {security?.last_security_scan || 'Never'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Resource Usage Chart Component
+interface ResourceUsageChartProps {
+  health: SystemHealthData | undefined;
+}
+const ResourceUsageChart = memo(({ health }: ResourceUsageChartProps) => {
+  const chartData: ChartData<'doughnut'> = useMemo(() => ({
+    labels: ['CPU Usage', 'Memory Usage', 'Disk Usage'],
+    datasets: [
+      {
+        data: [
+          health?.cpu_usage || 0,
+          health?.memory_usage || 0,
+          health?.disk_usage || 0
+        ],
+        backgroundColor: [
+          '#000000',
+          '#4B5563', 
+          '#9CA3AF'
+        ],
+        borderWidth: 0,
+        cutout: '50%'
+      }
+    ]
+  }), [health]);
+
+  const options: ChartOptions<'doughnut'> = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          color: '#6B7280'
+        }
+      },
+      title: {
+        display: false
+      }
+    }
+  }), []);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <h3 className="text-lg font-medium text-black mb-4 flex items-center gap-2">
+        <Database className="w-5 h-5 text-gray-600" />
+        Resource Usage
+      </h3>
+      <div className="h-64">
+        <Doughnut data={chartData} options={options} />
+      </div>
+    </div>
+  );
+});
+
+// System Alerts Card Component
+interface SystemAlertsCardProps {
+  alerts: AlertData[] | undefined;
+}
+const SystemAlertsCard = memo(({ alerts }: SystemAlertsCardProps) => {
+  const getAlertStyle = useCallback((type: string) => {
+    switch (type) {
+      case 'critical': return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: 'text-red-500' };
+      case 'error': return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', icon: 'text-red-400' };
+      case 'warning': return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', icon: 'text-yellow-500' };
+      case 'info': return { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', icon: 'text-blue-500' };
+      default: return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-800', icon: 'text-gray-500' };
+    }
+  }, []);
+
+  const formatTime = useCallback((timestamp: string) => {
+    try {
+      return new Date(timestamp).toLocaleString();
+    } catch {
+      return timestamp;
+    }
+  }, []);
+
+  const recentAlerts = useMemo(() => {
+    return alerts?.slice(0, 5) || [];
+  }, [alerts]);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-medium text-black flex items-center gap-2">
+          <Bell className="w-5 h-5 text-gray-600" />
+          System Alerts
+        </h3>
+        <span className="text-sm text-gray-500">
+          {alerts?.filter(a => !a.resolved).length || 0} active
+        </span>
+      </div>
+      
+      <div className="space-y-3">
+        {recentAlerts.length > 0 ? (
+          recentAlerts.map((alert) => {
+            const style = getAlertStyle(alert.type);
+            return (
+              <div key={alert.id} className={`border rounded-lg p-3 ${style.bg} ${style.border}`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Eye className={`w-4 h-4 ${style.icon}`} />
+                      <span className={`text-sm font-medium ${style.text}`}>
+                        {alert.component}
+                      </span>
+                      {alert.resolved && (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      )}
+                    </div>
+                    <p className={`text-sm ${style.text} leading-relaxed`}>
+                      {alert.message}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatTime(alert.timestamp)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-center py-8">
+            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+            <p className="text-gray-500">No recent alerts</p>
+            <p className="text-sm text-gray-400">System running smoothly</p>
+          </div>
+        )}
       </div>
     </div>
   );

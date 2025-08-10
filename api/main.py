@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables.config import RunnableConfig
 from api.tools import llm, extract_location, extract_salary, build_job_description
@@ -13,6 +14,9 @@ from api.performance_evaluator import performance_evaluator, UserOutcome
 import time
 import uuid
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 config = RunnableConfig(recursion_limit=50)
 
@@ -21,25 +25,31 @@ config = RunnableConfig(recursion_limit=50)
 #########################################
 
 def should_continue(state: MultiAgentState):
-    """Enhanced routing with smart decision making"""
+    """Enhanced routing with smart decision making based on execution plan"""
     next_agent = state.get('next_agent', 'END')
     
+    # Handle HITL approval checkpoint
+    if next_agent == 'HITL_APPROVAL':
+        return END
     
     if next_agent == 'END':
         return END
     
-    agent_map = {
-        'coordinator': 'coordinator',
-        'resume_analyst': 'resume_analyst', 
-        'job_researcher': 'job_researcher',
-        'cv_creator': 'cv_creator',
-        'job_matcher': 'job_matcher'
-    }
+    # For agent transitions, use the coordinator plan to determine next agent
+    plan = state.get('coordinator_plan', {})
+    completed = state.get('completed_tasks', [])
+    execution_order = plan.get('execution_order', [])
     
-    return agent_map.get(next_agent, END)
+    # Find the next agent in execution order that hasn't been completed
+    for agent in execution_order:
+        if agent not in completed:
+            return agent
+    
+    # If all agents in execution order are complete, end the workflow
+    return END
 
 def create_multi_agent_system():
-    """Create the enhanced multi-agent orchestration system"""
+    """Create the enhanced multi-agent orchestration system with HITL support"""
     
     graph = StateGraph(MultiAgentState)
 
@@ -71,13 +81,41 @@ def create_multi_agent_system():
         END: END
     })
     
-    # All agents route back to coordinator for intelligent next decision
-    graph.add_edge("resume_analyst", "coordinator")
-    graph.add_edge("job_researcher", "coordinator")
-    graph.add_edge("cv_creator", "coordinator")
-    graph.add_edge("job_matcher", "coordinator")
+    # Agents route directly to next agent based on coordinator plan (no need to return to coordinator)
+    # Coordinator will set next_agent in state, and the conditional routing will handle the flow
+    graph.add_conditional_edges("resume_analyst", should_continue, {
+        "resume_analyst": "resume_analyst",
+        "job_researcher": "job_researcher", 
+        "cv_creator": "cv_creator",
+        "job_matcher": "job_matcher",
+        END: END
+    })
+    graph.add_conditional_edges("job_researcher", should_continue, {
+        "resume_analyst": "resume_analyst",
+        "job_researcher": "job_researcher", 
+        "cv_creator": "cv_creator",
+        "job_matcher": "job_matcher",
+        END: END
+    })
+    graph.add_conditional_edges("cv_creator", should_continue, {
+        "resume_analyst": "resume_analyst",
+        "job_researcher": "job_researcher", 
+        "cv_creator": "cv_creator",
+        "job_matcher": "job_matcher",
+        END: END
+    })
+    graph.add_conditional_edges("job_matcher", should_continue, {
+        "resume_analyst": "resume_analyst",
+        "job_researcher": "job_researcher", 
+        "cv_creator": "cv_creator",
+        "job_matcher": "job_matcher",
+        END: END
+    })
     
-    return graph.compile()
+    # Create checkpointer for HITL support
+    checkpointer = MemorySaver()
+    
+    return graph.compile(checkpointer=checkpointer)
 
 #########################################
 # Enhanced Main Interface              #
@@ -99,38 +137,151 @@ class JobHuntingMultiAgent:
         # Add job_id to initial state for HITL checkpoints
         result = self._process_request_internal(user_message, resume_path, user_id, job_id)
         
-        # Check if we hit an HITL checkpoint
-        if result.get("next_agent") == "HITL_APPROVAL":
-            return {
-                "success": False,
-                "hitl_checkpoint": result.get("hitl_checkpoint"),
-                "hitl_data": result.get("hitl_data"),
-                "messages": result.get("messages", []),
-                "partial_state": result
-            }
+        # HITL is now handled directly in _process_request_internal using LangGraph's interrupt system
         
         return result
     
-    def continue_from_approval(self, partial_state: Dict[str, Any], approval_response: Any) -> Dict[str, Any]:
-        """Continue processing after human approval"""
+    def continue_from_approval(self, thread_id: str, approval_response: Any) -> Dict[str, Any]:
+        """Continue processing after human approval using LangGraph's resume"""
         try:
-            # Update state with approval response
-            updated_state = partial_state.copy()
-            updated_state['hitl_response'] = approval_response
-            updated_state['next_agent'] = self._determine_next_agent_after_approval(partial_state, approval_response)
+            config_with_thread = {"configurable": {"thread_id": thread_id}}
             
-            # Continue processing from where we left off
-            result = self.system.invoke(updated_state, {"recursion_limit": 50})
+            # Check if user rejected the plan
+            if not approval_response.get("approved", True):
+                
+                # Update the state with rejection feedback and ask coordinator to create a new plan
+                try:
+                    current_state = self.system.get_state(config_with_thread)
+                    
+                    # Create updated values with feedback
+                    updated_values = {
+                        **current_state.values,
+                        'user_feedback': approval_response.get("feedback", "User requested modifications"),
+                        'plan_rejected': True,
+                        'next_agent': 'coordinator',
+                        'completed_tasks': []  # Reset to allow coordinator to run again
+                    }
+                    
+                    
+                    # Update the state with feedback
+                    self.system.update_state(config_with_thread, updated_values)
+                    
+                    
+                except Exception as update_error:
+                    logger.error(f"Failed to update state: {update_error}")
+                    return {
+                        "success": False,
+                        "error": f"Failed to process revision: {str(update_error)}"
+                    }
+                
+                # Resume execution to let coordinator create a new plan with feedback
+                try:
+                    from langgraph.types import Command
+                    for event in self.system.stream(Command(resume=approval_response), config_with_thread):
+                        
+                        # Check if we hit another interrupt (new plan for approval)
+                        if '__interrupt__' in event:
+                            interrupt_data = event['__interrupt__']
+                            if interrupt_data and len(interrupt_data) > 0:
+                                interrupt_obj = interrupt_data[0]
+                                if hasattr(interrupt_obj, 'value'):
+                                    interrupt_value = interrupt_obj.value
+                                    
+                                    return {
+                                        "success": False,
+                                        "hitl_checkpoint": interrupt_value.get("checkpoint"),
+                                        "hitl_data": interrupt_value.get("data"),
+                                        "job_id": interrupt_value.get("job_id"),
+                                        "partial_state": self.system.get_state(config_with_thread).values,
+                                        "thread_id": thread_id,
+                                        "revision": True  # Indicate this is a revised plan
+                                    }
+                    
+                    # If no new interrupt, return the final result
+                    final_state = self.system.get_state(config_with_thread)
+                    return {
+                        "success": True,
+                        "messages": final_state.values.get("messages", []),
+                        "completed_tasks": final_state.values.get("completed_tasks", []),
+                        "revision_applied": True
+                    }
+                    
+                except Exception as stream_error:
+                    logger.error(f"Error during revision stream: {stream_error}")
+                    import traceback
+                    traceback.print_exc()
+                    return {
+                        "success": False,
+                        "error": f"Failed to create revised plan: {str(stream_error)}"
+                    }
+            
+            # Reset plan_rejected flag for approved plans before resuming
+            try:
+                current_state = self.system.get_state(config_with_thread)
+                if current_state.values.get('plan_rejected', False):
+                    
+                    # Get the plan and determine correct next_agent
+                    plan = current_state.values.get('coordinator_plan', {})
+                    execution_order = plan.get('execution_order', [])
+                    completed_tasks = current_state.values.get('completed_tasks', [])
+                    
+                    # Find the first uncompleted agent in execution order
+                    next_agent = 'END'
+                    for agent in execution_order:
+                        if agent not in completed_tasks:
+                            next_agent = agent
+                            break
+                    
+                    
+                    updated_values = {
+                        **current_state.values,
+                        'plan_rejected': False,
+                        'user_feedback': "",  # Clear the feedback too
+                        'next_agent': next_agent  # Set correct next agent to avoid coordinator loop
+                    }
+                    self.system.update_state(config_with_thread, updated_values)
+            except Exception as reset_error:
+                logger.warning(f"Failed to reset plan_rejected flag: {reset_error}")
+            
+            # Resume execution using Command with approval response
+            from langgraph.types import Command
+            
+            for event in self.system.stream(Command(resume=approval_response), config_with_thread):
+                
+                # Check if we hit another interrupt during resume
+                if '__interrupt__' in event:
+                    interrupt_data = event['__interrupt__']
+                    if interrupt_data and len(interrupt_data) > 0:
+                        interrupt_obj = interrupt_data[0]
+                        if hasattr(interrupt_obj, 'value'):
+                            interrupt_value = interrupt_obj.value
+                            
+                            return {
+                                "success": False,
+                                "hitl_checkpoint": interrupt_value.get("checkpoint"),
+                                "hitl_data": interrupt_value.get("data"),
+                                "job_id": interrupt_value.get("job_id"),
+                                "partial_state": self.system.get_state(config_with_thread).values,
+                                "thread_id": thread_id
+                            }
+            
+            # Get final result
+            final_state = self.system.get_state(config_with_thread)
+            result = final_state.values
             
             return {
                 "success": True,
                 "messages": result.get("messages", []),
                 "job_listings": result.get("job_listings", []),
                 "cv_path": result.get("cv_path", ""),
-                "agent_workflow": result.get("agent_workflow", "")
+                "completed_tasks": result.get("completed_tasks", []),
+                "resume_analysis": result.get("resume_analysis", {}),
+                "job_market_data": result.get("job_market_data", {}),
+                "comparison_results": result.get("comparison_results", {})
             }
             
         except Exception as e:
+            logger.error(f"Failed to continue after approval: {str(e)}")
             return {
                 "success": False,
                 "error": f"Failed to continue after approval: {str(e)}"
@@ -184,13 +335,80 @@ class JobHuntingMultiAgent:
             "next_agent": "coordinator",
             "session_id": session_id,
             "user_id": user_id,
-            "job_id": job_id,  # Add job_id for HITL support
+            "job_id": job_id or "",  # Add job_id for HITL support
+            "hitl_checkpoint": "",  # Add HITL fields to state
+            "hitl_data": {},
+            "user_feedback": "",  # User feedback for plan revisions
+            "plan_rejected": False,  # Whether the plan was rejected
             "agent_start_times": {}  # Track individual agent start times
         }
         
+        
         try:            
-            # Process the request
-            result = self.system.invoke(initial_state, config)
+            # Process the request with LangGraph's built-in HITL support
+            thread_id = f"thread_{job_id}"
+            config_with_thread = {"configurable": {"thread_id": thread_id}}
+            
+            # Stream the execution to detect interrupts
+            try:
+                for event in self.system.stream(initial_state, config_with_thread):
+                    
+                    # Check if this event contains an interrupt
+                    if '__interrupt__' in event:
+                        interrupt_data = event['__interrupt__']
+                        if interrupt_data and len(interrupt_data) > 0:
+                            interrupt_obj = interrupt_data[0]  # First interrupt
+                            if hasattr(interrupt_obj, 'value'):
+                                interrupt_value = interrupt_obj.value
+                                
+                                return {
+                                    "success": False,
+                                    "hitl_checkpoint": interrupt_value.get("checkpoint"),
+                                    "hitl_data": interrupt_value.get("data"),
+                                    "job_id": interrupt_value.get("job_id"),
+                                    "partial_state": self.system.get_state(config_with_thread).values,
+                                    "thread_id": thread_id
+                                }
+                    
+            except Exception as e:
+                # Check if this is an interrupt exception
+                if "interrupt" in str(e).lower():
+                    
+                    # Get current state to access interrupt data
+                    current_state = self.system.get_state(config_with_thread)
+                    
+                    # The interrupt data should be in the most recent message or state
+                    # Let's check if we have any interrupt information stored
+                    if current_state.values.get('messages'):
+                        last_message = current_state.values['messages'][-1]
+                        if hasattr(last_message, 'content') and "Awaiting Your Approval" in str(last_message.content):
+                            # Extract HITL data from the coordinator plan
+                            return {
+                                "success": False,
+                                "hitl_checkpoint": "coordinator_plan",
+                                "hitl_data": {
+                                    "plan_summary": str(last_message.content)
+                                },
+                                "job_id": job_id,
+                                "partial_state": current_state.values,
+                                "thread_id": thread_id
+                            }
+                    
+                    # Fallback: return basic HITL response
+                    return {
+                        "success": False,
+                        "hitl_checkpoint": "coordinator_plan",
+                        "hitl_data": {"plan_summary": "Plan created, awaiting approval"},
+                        "job_id": job_id,
+                        "partial_state": current_state.values,
+                        "thread_id": thread_id
+                    }
+                else:
+                    raise e
+            
+            # Get final result if no interrupt occurred
+            final_state = self.system.get_state(config_with_thread)
+            result = final_state.values
             
             # Calculate total processing time
             total_time = time.time() - start_time
