@@ -49,7 +49,7 @@ def test_security():
     print("\n🔒 Testing Security Components...")
     
     try:
-        from api.security import SecurityManager
+        from tools.security import SecurityManager
         
         security = SecurityManager()
         print("   ✅ Security Manager initialized")
@@ -80,7 +80,7 @@ def test_performance_evaluator():
     print("\n📊 Testing Performance Evaluator...")
     
     try:
-        from api.performance_evaluator import PerformanceEvaluator
+        from tools.performance_evaluator import PerformanceEvaluator
         
         evaluator = PerformanceEvaluator()
         print("   ✅ Performance Evaluator initialized")

@@ -8,9 +8,6 @@ import time
 import html
 from langchain_core.messages import AIMessage, SystemMessage
 from .base import MultiAgentState
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from api.tools import search_google_jobs, llm
 from api.ai_safety import safe_ai_wrapper, AISafetyCoordinator
 

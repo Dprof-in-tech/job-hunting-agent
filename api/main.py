@@ -317,6 +317,9 @@ class JobHuntingMultiAgent:
         user_id = user_id or f"user_{int(time.time())}"
         start_time = time.time()
         
+        # Set reasonable timeout for processing (5 minutes)
+        processing_timeout = 300  # seconds
+        
         # Track individual agent timing
         agent_timings = {}
         
@@ -349,9 +352,22 @@ class JobHuntingMultiAgent:
             thread_id = f"thread_{job_id}"
             config_with_thread = {"configurable": {"thread_id": thread_id}}
             
-            # Stream the execution to detect interrupts
+            # Stream the execution to detect interrupts with proper exception handling
             try:
+                stream_events = []
                 for event in self.system.stream(initial_state, config_with_thread):
+                    # Check for timeout to prevent GeneratorExit from long-running processes
+                    current_time = time.time()
+                    if current_time - start_time > processing_timeout:
+                        logger.warning(f"Processing timeout after {processing_timeout}s")
+                        return {
+                            "success": False,
+                            "error": "Processing timeout. Please try with a shorter request.",
+                            "job_id": job_id,
+                            "processing_time": current_time - start_time
+                        }
+                    
+                    stream_events.append(event)
                     
                     # Check if this event contains an interrupt
                     if '__interrupt__' in event:
@@ -369,7 +385,19 @@ class JobHuntingMultiAgent:
                                     "partial_state": self.system.get_state(config_with_thread).values,
                                     "thread_id": thread_id
                                 }
+                
+                # If stream completed without interrupts, continue with normal processing
+                logger.info(f"Stream completed successfully with {len(stream_events)} events")
                     
+            except GeneratorExit:
+                # Handle generator being closed prematurely
+                logger.warning("LangGraph stream was closed prematurely (GeneratorExit)")
+                return {
+                    "success": False,
+                    "error": "Processing was interrupted. Please try again.",
+                    "job_id": job_id,
+                    "thread_id": thread_id
+                }
             except Exception as e:
                 # Check if this is an interrupt exception
                 if "interrupt" in str(e).lower():

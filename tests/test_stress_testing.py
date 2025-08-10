@@ -19,7 +19,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from api.main import JobHuntingMultiAgent
-from api.security import SecurityManager
+from tools.security import SecurityManager
 from api.ai_safety import AISafetyCoordinator
 
 logging.basicConfig(level=logging.INFO)
@@ -183,7 +183,6 @@ class SystemBreakingPointFinder:
             
             total_processed += successful_requests
             
-                       f"{batch_end_memory:.1f} MB total, {success_rate:.1%} success")
             
             # Force garbage collection
             gc.collect()

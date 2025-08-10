@@ -651,23 +651,25 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
   };
 
   const pollJobStatus = async (jobId: string, fastPolling = false) => {
-    // Clear any existing polling interval first
+    // Clear any existing polling interval first to prevent conflicts
     if (pollingInterval) {
       clearInterval(pollingInterval);
+      setPollingInterval(null);
     }
     
     // Use faster polling immediately after user actions, then slow down
-    const pollInterval = fastPolling ? 500 : 2500; // 0.5s vs 2.5s
+    const pollInterval = fastPolling ? 1000 : 3000; // 1s vs 3s (reduced frequency to prevent GeneratorExit)
     let pollCount = 0;
     
     const interval = setInterval(async () => {
       pollCount++;
       
-      // After 10 fast polls (5 seconds), switch to slower polling
-      if (fastPolling && pollCount > 10) {
+      // After 8 fast polls (8 seconds), switch to slower polling
+      if (fastPolling && pollCount > 8) {
         clearInterval(interval);
         setPollingInterval(null);
-        pollJobStatus(jobId, false); // Switch to slow polling
+        // Add small delay before switching to prevent race condition
+        setTimeout(() => pollJobStatus(jobId, false), 500);
         return;
       }
       

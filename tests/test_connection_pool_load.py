@@ -19,7 +19,7 @@ import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from api.security import SecurityManager
+from tools.security import SecurityManager
 from api.ai_safety import AISafetyCoordinator
 
 logging.basicConfig(level=logging.INFO)

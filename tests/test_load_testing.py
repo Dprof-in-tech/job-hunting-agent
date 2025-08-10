@@ -24,7 +24,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from api.main import JobHuntingMultiAgent
-from api.security import SecurityManager
+from tools.security import SecurityManager
 
 # Configure logging for load tests
 logging.basicConfig(level=logging.INFO)
