@@ -236,6 +236,7 @@ class PerformanceEvaluator:
     def _save_to_database(self):
         """Save current metrics to database"""
         if not self.db_engine:
+            logging.info("No database engine available, skipping save")
             return
         try:
             with self._get_db_session() as session:
@@ -269,12 +270,20 @@ class PerformanceEvaluator:
                         errors=metrics.errors
                     )
                     session.add(agent_record)
+                
+                # Explicitly commit the transaction
+                session.commit()
+                logging.info(f"Successfully saved system metrics: {self.system_metrics.total_requests} total requests")
+                
         except Exception as e:
-            logging.warning(f"Failed to save metrics to database: {e}")
+            logging.error(f"Failed to save metrics to database: {e}")
+            import traceback
+            logging.error(f"Database save error traceback: {traceback.format_exc()}")
     
     def _save_agent_to_database(self, agent_name: str, metrics: AgentPerformanceMetrics):
         """Save individual agent metrics to database immediately"""
         if not self.db_engine:
+            logging.info(f"No database engine available for agent {agent_name}, skipping save")
             return
         try:
             with self._get_db_session() as session:
@@ -290,8 +299,12 @@ class PerformanceEvaluator:
                     errors=metrics.errors
                 )
                 session.add(agent_record)
+                # The context manager handles commit automatically
+                logging.info(f"Successfully saved agent metrics for {agent_name}: {metrics.total_calls} calls, {metrics.success_rate:.1f}% success")
         except Exception as e:
-            logging.warning(f"Failed to save agent metrics for {agent_name}: {e}")
+            logging.error(f"Failed to save agent metrics for {agent_name}: {e}")
+            import traceback
+            logging.error(f"Agent save error traceback: {traceback.format_exc()}")
     
     def save_content_validation(self, session_id: str, file_name: str, file_type: str, 
                               file_size: int, is_valid: bool, explanation: str, content_sample: str = ""):
