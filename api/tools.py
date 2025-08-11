@@ -30,28 +30,94 @@ llm = ChatOpenAI(model="gpt-5-nano", temperature=1)
 #########################################
 # Tools                   #
 #########################################
+def validate_resume_content(text: str) -> tuple[bool, str]:
+    """
+    AI-powered validation to check if extracted text is actually resume content
+    Returns (is_valid, explanation)
+    """
+    try:
+        # Quick check for empty or very short content
+        if not text or len(text.strip()) < 50:
+            return False, "Document appears to be empty or too short to be a resume"
+            
+        # Take first 1000 characters for classification (to save on API costs)
+        sample_text = text[:1000].strip()
+        
+        classification_prompt = f"""You are a document classifier. Analyze this text and determine if it's from a resume/CV.
+
+TEXT TO ANALYZE:
+{sample_text}
+
+Instructions:
+- Answer with "YES" if this appears to be resume/CV content
+- Answer with "NO" if this is clearly not a resume (research paper, manual, book, etc.)
+- Provide a brief 1-sentence explanation
+
+Format your response as: YES/NO - [brief explanation]
+
+Response:"""
+
+        response = llm.invoke(classification_prompt)
+        result_text = response.content.strip()
+        
+        # Parse the response
+        if result_text.upper().startswith('YES'):
+            return True, result_text
+        elif result_text.upper().startswith('NO'):
+            return False, result_text
+        else:
+            # If response format is unclear, err on the side of caution
+            return False, f"Unable to classify document content: {result_text}"
+            
+    except Exception as e:
+        # If classification fails, allow the document through to avoid blocking valid resumes
+        return True, f"Classification failed, allowing document: {str(e)}"
+
 @tool
 def parse_resume(resume_path: str) -> str:
-    """Parse PDF, DOCX, or TXT resume"""
+    """Parse and validate PDF, DOCX, or TXT resume"""
     try:
+        # First, extract the text
+        text = ""
         if resume_path.endswith('.pdf'):
             with open(resume_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
                 for page in pdf_reader.pages:
                     text += page.extract_text() + "\n"
-            return text
         elif resume_path.endswith('.docx'):
             doc = Document(resume_path)
-            text = ""
             for paragraph in doc.paragraphs:
                 text += paragraph.text + "\n"
-            return text
         elif resume_path.endswith('.txt'):
             with open(resume_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                text = f.read()
         else:
             raise ValueError("Resume must be PDF, DOCX, or TXT format")
+        
+        # Validate that the extracted content is actually resume-related
+        is_valid, explanation = validate_resume_content(text)
+        
+        # Log content validation (if performance_evaluator is available)
+        try:
+            from api.main import performance_evaluator
+            import os
+            performance_evaluator.save_content_validation(
+                session_id="unknown",  # Will be updated when session context is available
+                file_name=os.path.basename(resume_path),
+                file_type=resume_path.split('.')[-1].upper(),
+                file_size=os.path.getsize(resume_path) if os.path.exists(resume_path) else 0,
+                is_valid=is_valid,
+                explanation=explanation,
+                content_sample=text[:200] if text else ""
+            )
+        except Exception:
+            pass  # Don't fail if logging doesn't work
+        
+        if not is_valid:
+            return f"❌ **Content Validation Failed**: {explanation}\n\nPlease upload a valid resume/CV document."
+            
+        return text
+        
     except Exception as e:
         return f"Resume parsing failed: {str(e)}"
 

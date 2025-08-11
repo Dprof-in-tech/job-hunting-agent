@@ -12,8 +12,19 @@ from api.agents.job_researcher_agent import job_researcher_agent
 from api.agents.resume_analyst_agent import resume_analyst_agent
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+import os
+from contextlib import contextmanager
+
+# Database imports
+try:
+    from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, JSON
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import sessionmaker
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
 
 # performance_evaluator consolidated inline
 #########################################
@@ -21,6 +32,62 @@ import logging
 #########################################
 
 from dataclasses import dataclass, asdict
+
+# Database Models (only if SQLAlchemy is available)
+if DB_AVAILABLE:
+    Base = declarative_base()
+    
+    class SystemMetrics(Base):
+        __tablename__ = 'system_metrics'
+        id = Column(Integer, primary_key=True)
+        timestamp = Column(DateTime, default=datetime.utcnow)
+        total_requests = Column(Integer, default=0)
+        successful_requests = Column(Integer, default=0)
+        failed_requests = Column(Integer, default=0)
+        avg_response_time = Column(Float, default=0.0)
+        user_satisfaction_score = Column(Float, default=0.0)
+        human_interventions = Column(Integer, default=0)
+        uptime_percentage = Column(Float, default=100.0)
+        system_grade = Column(String(10))
+        additional_data = Column(JSON)
+
+    class AgentMetrics(Base):
+        __tablename__ = 'agent_metrics'
+        id = Column(Integer, primary_key=True)
+        timestamp = Column(DateTime, default=datetime.utcnow)
+        agent_name = Column(String(100), nullable=False)
+        total_calls = Column(Integer, default=0)
+        successful_calls = Column(Integer, default=0)
+        failed_calls = Column(Integer, default=0)
+        total_processing_time = Column(Float, default=0.0)
+        avg_processing_time = Column(Float, default=0.0)
+        success_rate = Column(Float, default=0.0)
+        performance_grade = Column(String(10))
+        errors = Column(JSON)
+
+    class UserFeedback(Base):
+        __tablename__ = 'user_feedback'
+        id = Column(Integer, primary_key=True)
+        session_id = Column(String(100), nullable=False)
+        user_id = Column(String(100))
+        timestamp = Column(DateTime, default=datetime.utcnow)
+        user_satisfaction = Column(Float)
+        resume_improved = Column(Boolean)
+        jobs_found_helpful = Column(Boolean)
+        would_use_again = Column(Boolean)
+        feedback_text = Column(Text)
+        
+    class ContentValidation(Base):
+        __tablename__ = 'content_validations'
+        id = Column(Integer, primary_key=True)
+        timestamp = Column(DateTime, default=datetime.utcnow)
+        session_id = Column(String(100))
+        file_name = Column(String(255))
+        file_type = Column(String(50))
+        file_size = Column(Integer)
+        is_valid_resume = Column(Boolean)
+        validation_explanation = Column(Text)
+        content_sample = Column(Text)
 
 @dataclass
 class AgentPerformanceMetrics:
@@ -71,12 +138,130 @@ class SystemPerformanceMetrics:
             self.last_updated = datetime.now()
 
 class PerformanceEvaluator:
-    """Comprehensive performance evaluation system - in-memory storage for serverless deployment"""
+    """Comprehensive performance evaluation system with optional database persistence"""
     
     def __init__(self):
         self.agent_metrics = {}
         self.system_metrics = SystemPerformanceMetrics()
         self.session_start_time = datetime.now()
+        self.db_engine = None
+        self.SessionLocal = None
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize database connection if available"""
+        if not DB_AVAILABLE:
+            return
+            
+        try:
+            database_url = os.getenv('DATABASE_URL') or os.getenv('NEON_DATABASE_URL')
+            if database_url:
+                if database_url.startswith('postgres://'):
+                    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+                if 'neon.tech' in database_url and 'sslmode=' not in database_url:
+                    database_url += '?sslmode=require'
+                
+                self.db_engine = create_engine(database_url, pool_pre_ping=True, pool_recycle=300)
+                self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.db_engine)
+                Base.metadata.create_all(bind=self.db_engine)
+                logging.info("Database initialized for persistent metrics")
+                
+                # Load existing metrics from database
+                self._load_from_database()
+        except Exception as e:
+            logging.warning(f"Database initialization failed, using in-memory storage: {e}")
+    
+    @contextmanager
+    def _get_db_session(self):
+        """Get database session with automatic cleanup"""
+        if not self.SessionLocal:
+            raise Exception("Database not initialized")
+        session = self.SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    
+    def _load_from_database(self):
+        """Load existing metrics from database"""
+        if not self.db_engine:
+            return
+        try:
+            with self._get_db_session() as session:
+                # Load latest system metrics
+                latest_system = session.query(SystemMetrics).order_by(SystemMetrics.timestamp.desc()).first()
+                if latest_system:
+                    self.system_metrics.total_requests = latest_system.total_requests
+                    self.system_metrics.successful_requests = latest_system.successful_requests
+                    self.system_metrics.failed_requests = latest_system.failed_requests
+                    self.system_metrics.avg_request_time = latest_system.avg_response_time
+                    self.system_metrics.user_satisfaction_score = latest_system.user_satisfaction_score
+                    self.system_metrics.human_interventions = latest_system.human_interventions
+        except Exception as e:
+            logging.warning(f"Failed to load metrics from database: {e}")
+    
+    def _save_to_database(self):
+        """Save current metrics to database"""
+        if not self.db_engine:
+            return
+        try:
+            with self._get_db_session() as session:
+                # Save system metrics
+                success_rate = (self.system_metrics.successful_requests / max(self.system_metrics.total_requests, 1)) * 100
+                system_grade = self._calculate_system_grade(success_rate, self.system_metrics.user_satisfaction_score)
+                
+                system_record = SystemMetrics(
+                    total_requests=self.system_metrics.total_requests,
+                    successful_requests=self.system_metrics.successful_requests,
+                    failed_requests=self.system_metrics.failed_requests,
+                    avg_response_time=self.system_metrics.avg_request_time,
+                    user_satisfaction_score=self.system_metrics.user_satisfaction_score,
+                    human_interventions=self.system_metrics.human_interventions,
+                    uptime_percentage=success_rate,
+                    system_grade=system_grade
+                )
+                session.add(system_record)
+                
+                # Save agent metrics
+                for agent_name, metrics in self.agent_metrics.items():
+                    agent_record = AgentMetrics(
+                        agent_name=agent_name,
+                        total_calls=metrics.total_calls,
+                        successful_calls=metrics.successful_calls,
+                        failed_calls=metrics.failed_calls,
+                        total_processing_time=metrics.total_processing_time,
+                        avg_processing_time=metrics.avg_processing_time,
+                        success_rate=metrics.success_rate,
+                        performance_grade=self._calculate_performance_grade(metrics),
+                        errors=metrics.errors
+                    )
+                    session.add(agent_record)
+        except Exception as e:
+            logging.warning(f"Failed to save metrics to database: {e}")
+    
+    def save_content_validation(self, session_id: str, file_name: str, file_type: str, 
+                              file_size: int, is_valid: bool, explanation: str, content_sample: str = ""):
+        """Save content validation result to database"""
+        if not self.db_engine:
+            return
+        try:
+            with self._get_db_session() as session:
+                validation = ContentValidation(
+                    session_id=session_id,
+                    file_name=file_name,
+                    file_type=file_type,
+                    file_size=file_size,
+                    is_valid_resume=is_valid,
+                    validation_explanation=explanation,
+                    content_sample=content_sample[:500]  # Truncate for storage
+                )
+                session.add(validation)
+        except Exception as e:
+            logging.warning(f"Failed to save content validation: {e}")
 
     def reset_session(self):
         """Reset all metrics for a new session - useful for serverless environments"""
@@ -136,6 +321,10 @@ class PerformanceEvaluator:
         self.system_metrics.avg_request_time = total_time / self.system_metrics.total_requests
         
         self.system_metrics.last_updated = datetime.now()
+        
+        # Save to database periodically (every 10 requests to avoid too many DB calls)
+        if self.system_metrics.total_requests % 10 == 0:
+            self._save_to_database()
     
     def record_request_metrics(self, agent_name: str, request_type: str, processing_time: float, success: bool, error: str = None):
         """Record request metrics for performance tracking"""

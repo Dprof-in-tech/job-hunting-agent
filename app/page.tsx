@@ -817,27 +817,27 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
     <div className="min-h-screen bg-white text-black">
       {/* Header */}
       <header className="border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="flex items-center gap-3 mb-4">
-            <Brain className="w-8 h-8 text-black" />
-            <h1 className="text-3xl font-light tracking-tight">Intelligent Career Assistant</h1>
+            <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-black" />
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-light tracking-tight">Intelligent Career Assistant</h1>
           </div>
-          <p className="text-gray-600 text-lg leading-relaxed max-w-2xl">
+          <p className="text-gray-600 text-base sm:text-lg leading-relaxed max-w-2xl">
             AI-powered job hunting with autonomous multi-agent coordination. 
             Upload your resume and describe what you need—our specialists will handle the rest.
           </p>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid lg:grid-cols-2 gap-12">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="grid lg:grid-cols-2 gap-6 lg:gap-12">
           {/* Left Column - Input */}
-          <div className="space-y-8">
+          <div className="space-y-6 lg:space-y-8">
             {/* File Upload */}
             <div className="space-y-4">
-              <h2 className="text-xl font-medium text-black">Resume Upload</h2>
+              <h2 className="text-lg sm:text-xl font-medium text-black">Resume Upload</h2>
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
+                className={`border-2 border-dashed rounded-lg p-4 sm:p-6 lg:p-8 text-center transition-all duration-200 ${
                   dragActive
                     ? 'border-black bg-gray-50'
                     : selectedFile
@@ -868,10 +868,10 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto" />
+                    <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400 mx-auto" />
                     <div>
-                      <p className="font-medium text-gray-700">Drop your resume here</p>
-                      <p className="text-sm text-gray-500">or click to browse</p>
+                      <p className="font-medium text-gray-700 text-sm sm:text-base">Drop your resume here</p>
+                      <p className="text-xs sm:text-sm text-gray-500">or click to browse</p>
                     </div>
                     <p className="text-xs text-gray-400">Supports PDF, DOCX, TXT</p>
                   </div>
@@ -881,14 +881,14 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
 
             {/* Quick Actions */}
             <div className="space-y-4">
-              <h2 className="text-xl font-medium text-black">Quick Actions</h2>
-              <div className="grid sm:grid-cols-2 gap-3">
+              <h2 className="text-lg sm:text-xl font-medium text-black">Quick Actions</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {quickPrompts.map((prompt) => (
                   <button
                     key={prompt.id}
                     onClick={() => handleQuickPrompt(prompt)}
                     disabled={isLoading || (prompt.needsFile && !selectedFile)}
-                    className={`p-4 text-left border rounded-lg transition-all duration-200 ${
+                    className={`p-3 sm:p-4 text-left border rounded-lg transition-all duration-200 ${
                       prompt.needsFile && !selectedFile
                         ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
                         : 'border-gray-200 hover:border-black hover:shadow-sm bg-white text-black'
@@ -913,7 +913,7 @@ const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(nu
 
             {/* Custom Prompt */}
             <div className="space-y-4">
-              <h2 className="text-xl font-medium text-black">Custom Request</h2>
+              <h2 className="text-lg sm:text-xl font-medium text-black">Custom Request</h2>
               <div className="space-y-3">
                 <textarea
                   value={customPrompt}
@@ -925,7 +925,7 @@ Examples:
 • 'Find remote software engineering jobs'
 • 'Help me transition from finance to tech'
 • 'Research the job market for UX designers'"
-                  className="w-full h-32 p-4 border border-gray-300 rounded-lg resize-none focus:outline-none focus:border-black transition-colors duration-200 text-sm leading-relaxed"
+                  className="w-full h-28 sm:h-32 p-3 sm:p-4 border border-gray-300 rounded-lg resize-none focus:outline-none focus:border-black transition-colors duration-200 text-sm leading-relaxed"
                   disabled={isLoading}
                 />
                 <button
@@ -1043,7 +1043,7 @@ Examples:
                         {response.data.agent_messages.length} section{response.data.agent_messages.length !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <div className="space-y-3 max-h-[750px] overflow-y-auto pr-2 scrollbar-thin">
+                    <div className="space-y-3 max-h-[400px] sm:max-h-[500px] lg:max-h-[750px] overflow-y-auto pr-1 sm:pr-2 scrollbar-thin">
                       {response.data.agent_messages.map((message, index) => {
                         const isExpanded = expandedSections[index] ?? (index === 0); // First section expanded by default
                         const previewText = message.content.substring(0, 200) + (message.content.length > 200 ? '...' : '');
@@ -1053,7 +1053,7 @@ Examples:
                             {/* Message Header - Clickable */}
                             <button
                               onClick={() => toggleSection(index)}
-                              className="w-full flex items-center justify-between p-4 pb-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
+                              className="w-full flex items-center justify-between p-3 sm:p-4 pb-2 sm:pb-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
                             >
                               <div className="flex items-center gap-2">
                                 <Sparkles className="w-4 h-4 text-gray-600" />
@@ -1083,17 +1083,17 @@ Examples:
                             {/* Message Content - Collapsible */}
                             <div className={`transition-all duration-200 ${isExpanded ? 'max-h-none' : 'max-h-0 overflow-hidden'}`}>
                               {isExpanded ? (
-                                <div className="p-4 pt-3">
+                                <div className="p-3 sm:p-4 pt-2 sm:pt-3">
                                   <div 
-                                    className="prose prose-sm max-w-none text-gray-700 leading-relaxed [&>h1]:text-lg [&>h1]:font-semibold [&>h1]:text-black [&>h1]:mb-3 [&>h2]:text-base [&>h2]:font-medium [&>h2]:text-black [&>h2]:mb-2 [&>h3]:text-sm [&>h3]:font-medium [&>h3]:text-gray-900 [&>h3]:mb-2 [&>ul]:space-y-1 [&>ol]:space-y-1 [&>li]:text-sm [&>p]:text-sm [&>p]:mb-3 [&>strong]:font-medium [&>strong]:text-black"
+                                    className="prose prose-sm max-w-none text-gray-700 leading-relaxed [&>h1]:text-base [&>h1]:sm:text-lg [&>h1]:font-semibold [&>h1]:text-black [&>h1]:mb-3 [&>h2]:text-sm [&>h2]:sm:text-base [&>h2]:font-medium [&>h2]:text-black [&>h2]:mb-2 [&>h3]:text-xs [&>h3]:sm:text-sm [&>h3]:font-medium [&>h3]:text-gray-900 [&>h3]:mb-2 [&>ul]:space-y-1 [&>ol]:space-y-1 [&>li]:text-xs [&>li]:sm:text-sm [&>p]:text-xs [&>p]:sm:text-sm [&>p]:mb-3 [&>strong]:font-medium [&>strong]:text-black"
                                     dangerouslySetInnerHTML={{
                                       __html: formatAgentMessage(message.content)
                                     }}
                                   />
                                 </div>
                               ) : (
-                                <div className="p-4 pt-3 bg-gray-50">
-                                  <p className="text-sm text-gray-600 line-clamp-3">
+                                <div className="p-3 sm:p-4 pt-2 sm:pt-3 bg-gray-50">
+                                  <p className="text-xs sm:text-sm text-gray-600 line-clamp-3">
                                     {previewText}
                                   </p>
                                   <button
@@ -1115,17 +1115,17 @@ Examples:
                 {/* Job Listings */}
                 {response.success && response.data?.job_listings && response.data.job_listings.length > 0 && (
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50">
+                    <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-black">
+                        <h3 className="font-medium text-black text-sm sm:text-base">
                           Job Opportunities
                         </h3>
-                        <span className="text-sm text-gray-600">
+                        <span className="text-xs sm:text-sm text-gray-600">
                           {response.data.job_listings.length} found
                         </span>
                       </div>
                     </div>
-                    <div className="max-h-[400px] overflow-y-auto scrollbar-thin p-4">
+                    <div className="max-h-[300px] sm:max-h-[400px] overflow-y-auto scrollbar-thin p-3 sm:p-4">
                       <div className="space-y-4">
                       {response.data.job_listings.slice(0, 10).map((job: any, index: number) => {
                         const cleanDescription = getCleanDescription(job.description);
@@ -1133,9 +1133,9 @@ Examples:
                         const jobDetails = getJobDetails(job.description);
 
                         return (
-                          <div key={index} className="border-l-2 border-gray-200 pl-4 space-y-3">
+                          <div key={index} className="border-l-2 border-gray-200 pl-3 sm:pl-4 space-y-3">
                             {/* Job Title */}
-                            <h4 className="font-medium text-md text-black">{job.title}</h4>
+                            <h4 className="font-medium text-sm sm:text-base text-black">{job.title}</h4>
                             
                             {/* Skills Tags (if available) */}
                             {skills.length > 0 && (

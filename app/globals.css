@@ -61,3 +61,36 @@ body {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  /* Prevent horizontal overflow on mobile */
+  * {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* Adjust prose typography for mobile */
+  .prose {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  
+  /* Ensure buttons are touch-friendly */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Better touch targets for mobile */
+  .touch-target {
+    padding: 12px;
+  }
+}
+
+/* Fix for webkit-based mobile browsers */
+@supports (-webkit-touch-callout: none) {
+  .scrollable-container {
+    -webkit-overflow-scrolling: touch;
+  }
+}

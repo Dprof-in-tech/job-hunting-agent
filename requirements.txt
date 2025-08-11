@@ -75,4 +75,7 @@ bleach==6.2.0
 # Cloud Storage
 cloudinary==1.40.0
 
-
+# Database
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36
+alembic==1.14.0
