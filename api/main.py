@@ -187,7 +187,7 @@ class PerformanceEvaluator:
             session.close()
     
     def _load_from_database(self):
-        """Load existing metrics from database"""
+        """Load existing metrics from database to continue system-wide tracking"""
         if not self.db_engine:
             return
         try:
@@ -201,6 +201,35 @@ class PerformanceEvaluator:
                     self.system_metrics.avg_request_time = latest_system.avg_response_time
                     self.system_metrics.user_satisfaction_score = latest_system.user_satisfaction_score
                     self.system_metrics.human_interventions = latest_system.human_interventions
+                    
+                    logging.info(f"Loaded existing metrics from database: {latest_system.total_requests} total requests")
+                
+                # Also load agent metrics
+                agent_records = session.query(AgentMetrics).filter(
+                    AgentMetrics.timestamp >= datetime.utcnow() - timedelta(hours=24)
+                ).order_by(AgentMetrics.timestamp.desc()).all()
+                
+                # Group by agent and get latest for each
+                agent_latest = {}
+                for record in agent_records:
+                    if record.agent_name not in agent_latest:
+                        agent_latest[record.agent_name] = record
+                
+                # Load into memory
+                for agent_name, record in agent_latest.items():
+                    metrics = AgentPerformanceMetrics(
+                        agent_name=agent_name,
+                        total_calls=record.total_calls,
+                        successful_calls=record.successful_calls,
+                        failed_calls=record.failed_calls,
+                        total_processing_time=record.total_processing_time,
+                        avg_processing_time=record.avg_processing_time,
+                        success_rate=record.success_rate,
+                        errors=record.errors or [],
+                        last_updated=record.timestamp
+                    )
+                    self.agent_metrics[agent_name] = metrics
+                    
         except Exception as e:
             logging.warning(f"Failed to load metrics from database: {e}")
     
@@ -242,6 +271,27 @@ class PerformanceEvaluator:
                     session.add(agent_record)
         except Exception as e:
             logging.warning(f"Failed to save metrics to database: {e}")
+    
+    def _save_agent_to_database(self, agent_name: str, metrics: AgentPerformanceMetrics):
+        """Save individual agent metrics to database immediately"""
+        if not self.db_engine:
+            return
+        try:
+            with self._get_db_session() as session:
+                agent_record = AgentMetrics(
+                    agent_name=agent_name,
+                    total_calls=metrics.total_calls,
+                    successful_calls=metrics.successful_calls,
+                    failed_calls=metrics.failed_calls,
+                    total_processing_time=metrics.total_processing_time,
+                    avg_processing_time=metrics.avg_processing_time,
+                    success_rate=metrics.success_rate,
+                    performance_grade=self._calculate_performance_grade(metrics),
+                    errors=metrics.errors
+                )
+                session.add(agent_record)
+        except Exception as e:
+            logging.warning(f"Failed to save agent metrics for {agent_name}: {e}")
     
     def save_content_validation(self, session_id: str, file_name: str, file_type: str, 
                               file_size: int, is_valid: bool, explanation: str, content_sample: str = ""):
@@ -303,6 +353,9 @@ class PerformanceEvaluator:
         metrics.success_rate = (metrics.successful_calls / metrics.total_calls) * 100
         metrics.avg_processing_time = metrics.total_processing_time / metrics.total_calls
         metrics.last_updated = datetime.now()
+        
+        # Save agent metrics to database immediately
+        self._save_agent_to_database(agent_name, metrics)
     
     def log_system_request(self, success: bool, request_time: float, human_intervention: bool = False):
         """Log a system-level request"""
@@ -322,9 +375,8 @@ class PerformanceEvaluator:
         
         self.system_metrics.last_updated = datetime.now()
         
-        # Save to database periodically (every 10 requests to avoid too many DB calls)
-        if self.system_metrics.total_requests % 10 == 0:
-            self._save_to_database()
+        # Save to database after every request for true system-wide metrics
+        self._save_to_database()
     
     def record_request_metrics(self, agent_name: str, request_type: str, processing_time: float, success: bool, error: str = None):
         """Record request metrics for performance tracking"""
@@ -344,6 +396,9 @@ class PerformanceEvaluator:
             self.system_metrics.user_satisfaction_score = score
         else:
             self.system_metrics.user_satisfaction_score = ((current_score * (total_requests - 1)) + score) / total_requests
+        
+        # Save updated metrics to database immediately
+        self._save_to_database()
     
     def get_agent_performance_summary(self, agent_name: str):
         """Get performance summary for a specific agent"""
@@ -1073,6 +1128,22 @@ class JobHuntingMultiAgent:
             
             # Log satisfaction in the performance evaluator
             performance_evaluator.log_user_satisfaction(satisfaction)
+            
+            # Also save feedback to database if available
+            if hasattr(performance_evaluator, 'db_engine') and performance_evaluator.db_engine:
+                try:
+                    with performance_evaluator._get_db_session() as session:
+                        feedback_record = UserFeedback(
+                            session_id=session_id,
+                            user_id=user_id,
+                            user_satisfaction=satisfaction,
+                            resume_improved=resume_helpful,
+                            jobs_found_helpful=jobs_helpful,
+                            would_use_again=would_use_again
+                        )
+                        session.add(feedback_record)
+                except Exception as e:
+                    logging.warning(f"Failed to save user feedback to database: {e}")
             
             return {
                 "success": True,
